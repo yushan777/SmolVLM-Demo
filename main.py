@@ -3,6 +3,7 @@ from PIL import Image
 from transformers import AutoProcessor, AutoModelForVision2Seq
 from transformers.image_utils import load_image
 import os
+import time
 
 # Enable MPS fallback to CPU for operations not supported on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -16,6 +17,8 @@ elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
 else:
     DEVICE = "cpu"
     print("No GPU available, using CPU")
+
+start_time = time.time()
 
 # Load image
 image1 = load_image("input/woman-cafe.jpg")
@@ -60,3 +63,7 @@ generated_texts = processor.batch_decode(
 
 print(">>>>>>>>>>>")
 print(generated_texts[0])
+
+end_time = time.time()
+execution_time = end_time - start_time
+print(f"Function executed in {execution_time:.4f} seconds")
