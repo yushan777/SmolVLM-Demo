@@ -36,7 +36,7 @@ messages = [
         "role": "user",
         "content": [
             {"type": "image"},
-            {"type": "text", "text": "caption this image."}
+            {"type": "text", "text": "caption this image into a single paragraph."}
         ]
     },
 ]
