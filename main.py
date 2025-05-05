@@ -36,7 +36,7 @@ messages = [
         "role": "user",
         "content": [
             {"type": "image"},
-            {"type": "text", "text": "describe in detail this image to be used as a prompt for an AI image generator, but keep it concise."}
+            {"type": "text", "text": "describe this image keep the description concise."}
         ]
     },
 ]
