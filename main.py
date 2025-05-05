@@ -36,7 +36,7 @@ messages = [
         "role": "user",
         "content": [
             {"type": "image"},
-            {"type": "text", "text": "describe this image keep the description concise."}
+            {"type": "text", "text": "describe this image, keep the description concise and short, stick to the facts."}
         ]
     },
 ]
@@ -49,7 +49,7 @@ inputs = inputs.to(DEVICE)
 # Generate outputs with optimized parameters for Apple Silicon
 generated_ids = model.generate(
     **inputs, 
-    max_new_tokens=77,
+    max_new_tokens=128,
     do_sample=True,
     temperature=0.7,       # Balance between creativity and determinism
     top_p=0.9,             # Control diversity
