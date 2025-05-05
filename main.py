@@ -49,7 +49,7 @@ inputs = inputs.to(DEVICE)
 # Generate outputs with optimized parameters for Apple Silicon
 generated_ids = model.generate(
     **inputs, 
-    max_new_tokens=200,
+    max_new_tokens=77,
     do_sample=True,
     temperature=0.7,       # Balance between creativity and determinism
     top_p=0.9,             # Control diversity
