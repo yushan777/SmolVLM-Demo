@@ -3,6 +3,9 @@
 ### 1. max_new_tokens
 This parameter controls the maximum number of tokens the model will generate in response, regardless of the input prompt length. For example, if you set this to 500 as in your code, the model will generate up to 500 tokens in its response.
 
+### do_sample
+This tells the model to sample from a probability distribution rather than always picking the most likely token.
+
 ### 2. temperature
 Temperature regulates the randomness of the generated text. Lower values (closer to 0) make responses more deterministic and predictable, while higher values increase creativity and variability. 
 
