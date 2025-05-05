@@ -1,5 +1,5 @@
 Pillow
 transformers
 wheel
-flash-attn
+# flash-attn
 torch
