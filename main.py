@@ -6,10 +6,9 @@ from transformers.image_utils import load_image
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Load image
-image1 = load_image("input/liberty.jpg")
+image1 = load_image("input/woman-cafe.jpg")
 
 # Initialize processor and model
-# processor = AutoProcessor.from_pretrained("HuggingFaceTB/SmolVLM-Instruct")
 processor = AutoProcessor.from_pretrained("model/SmolVLM-Instruct")
 model = AutoModelForVision2Seq.from_pretrained(
     "model/SmolVLM-Instruct",
@@ -38,10 +37,12 @@ inputs = inputs.to(DEVICE)
 generated_ids = model.generate(
     **inputs, 
     max_new_tokens=500,
+    do_sample=True, # required for temp and top_p
     temperature=0.7,       # Adjust for creativity vs determinism
     top_p=0.9,             # Adjust for diversity
     repetition_penalty=1.1 # Discourage repetition
 )
+
 
 generated_texts = processor.batch_decode(
     generated_ids,
