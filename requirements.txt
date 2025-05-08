@@ -3,3 +3,4 @@ transformers
 wheel
 # flash-attn
 torch
+gradio

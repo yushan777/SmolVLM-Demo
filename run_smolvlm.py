@@ -39,7 +39,7 @@ messages = [
         "content": [
             {"type": "image"},
             # {"type": "text", "text": "Caption this image - short and concise."}
-            {"type": "text", "text": "Caption this image - brief but comprehensive in details."}
+            {"type": "text", "text": "Caption this image - brief detailed."}
             # {"type": "text", "text": "Caption this image - moderately detailed, moderately descriptive."}
             # {"type": "text", "text": "Caption this image - highly detailed, highly descriptive."}
             # "text", "text" = the first informs the type of content, the 2nd holds the actual string 
