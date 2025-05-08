@@ -2,6 +2,7 @@ import torch
 from PIL import Image
 from transformers import AutoProcessor, AutoModelForVision2Seq
 from transformers.image_utils import load_image
+from colored_print import color, style
 import os
 import time
 
@@ -30,13 +31,18 @@ model = AutoModelForVision2Seq.from_pretrained(
     torch_dtype=torch.float16,  # Keep half precision for efficiency
 ).to(DEVICE)
 
-# Create input messages
+# construct multi-modal iinput msg
 messages = [
     {
+        
         "role": "user",
         "content": [
             {"type": "image"},
-            {"type": "text", "text": "describe this image, keep the description concise and short, stick to the facts."}
+            # {"type": "text", "text": "Caption this image - short and concise."}
+            {"type": "text", "text": "Caption this image - brief but comprehensive in details."}
+            # {"type": "text", "text": "Caption this image - moderately detailed, moderately descriptive."}
+            # {"type": "text", "text": "Caption this image - highly detailed, highly descriptive."}
+            # "text", "text" = the first informs the type of content, the 2nd holds the actual string 
         ]
     },
 ]
@@ -49,9 +55,9 @@ inputs = inputs.to(DEVICE)
 # Generate outputs with optimized parameters for Apple Silicon
 generated_ids = model.generate(
     **inputs, 
-    max_new_tokens=128,
+    max_new_tokens=156,
     do_sample=True,
-    temperature=0.7,       # Balance between creativity and determinism
+    temperature=0.4,       # Balance between creativity and determinism
     top_p=0.9,             # Control diversity
     repetition_penalty=1.1, # Discourage repetition
 )
@@ -61,8 +67,21 @@ generated_texts = processor.batch_decode(
     skip_special_tokens=True,
 )
 
-print(">>>>>>>>>>>")
-print(generated_texts[0])
+# since we only passed in one image, we just need the first response
+full_output = generated_texts[0]
+
+# print(generated_texts[0])
+
+print(f">>>>> Full Output\n{full_output}", color.MAGENTA)
+
+# split based on the assistant role, assuming format like:
+# also remeove Assistant prefix
+if "Assistant:" in full_output:
+    response_only = full_output.split("Assistant: ")[-1].strip()
+else:
+    response_only = full_output.strip()
+
+print(f">>>>> Assistant Response Only\n{response_only}", color.ORANGE)
 
 end_time = time.time()
 execution_time = end_time - start_time
