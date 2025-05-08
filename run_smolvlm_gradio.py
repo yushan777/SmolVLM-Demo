@@ -139,8 +139,6 @@ with gr.Blocks(title="Image Captioner") as demo:
     )
 
     gr.Markdown("""
-    ## About
-    This app uses SmolVLM-Instruct model to generate captions for images.
     
     ### Parameters:
     - **Max New Tokens**: Controls the maximum length of the generated caption
