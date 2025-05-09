@@ -22,7 +22,8 @@ else:
 start_time = time.time()
 
 # Load image
-image1 = load_image("input/woman-cafe.jpg")
+# image1 = load_image("input/woman-cafe.jpg")
+image1 = load_image("input/dog.webp")
 
 # Initialize processor and model with proper dtype
 processor = AutoProcessor.from_pretrained("model/SmolVLM-Instruct")
@@ -39,7 +40,7 @@ messages = [
         "content": [
             {"type": "image"},
             # {"type": "text", "text": "Caption this image - short and concise."}
-            {"type": "text", "text": "Caption this image - brief detailed."}
+            {"type": "text", "text": "Caption this image - brief but detailed."}
             # {"type": "text", "text": "Caption this image - moderately detailed, moderately descriptive."}
             # {"type": "text", "text": "Caption this image - highly detailed, highly descriptive."}
             # "text", "text" = the first informs the type of content, the 2nd holds the actual string 
@@ -72,7 +73,7 @@ full_output = generated_texts[0]
 
 # print(generated_texts[0])
 
-print(f">>>>> Full Output\n{full_output}", color.MAGENTA)
+print(f">>>>> Full Output\n{full_output}", color.BRIGHT_BLUE)
 
 # split based on the assistant role, assuming format like:
 # also remeove Assistant prefix

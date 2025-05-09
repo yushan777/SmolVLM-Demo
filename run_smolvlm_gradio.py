@@ -2,12 +2,14 @@ import torch
 from PIL import Image
 from transformers import AutoProcessor, AutoModelForVision2Seq
 import gradio as gr
+from colored_print import color, style
 import os
 import time
 
 # Enable MPS fallback to CPU for operations not supported on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
+# ====================================================================
 def get_device():
     if torch.cuda.is_available():
         return "cuda"
@@ -16,6 +18,7 @@ def get_device():
     else:
         return "cpu"
 
+# ====================================================================
 def load_model():
     device = get_device()
     print(f"Using {device} device")
@@ -28,9 +31,11 @@ def load_model():
     
     return processor, model, device
 
+# ====================================================================
 # Load model and processor at startup
 processor, model, DEVICE = load_model()
 
+# ====================================================================
 def generate_caption(
     image, 
     caption_style,
@@ -40,12 +45,22 @@ def generate_caption(
     top_p=0.9,
     repetition_penalty=1.1
 ):
+    
+
+    # debug_info = f"""
+    # Image Format: {image.format}
+    # Image Mode: {image.mode}
+    # Image Size: {image.size}
+    # """
+
+    # print(debug_info, color.YELLOW)
+
     start_time = time.time()
     
     # Define caption style prompts
     style_prompts = {
         "Short and concise": "Caption this image - short and concise.",
-        "Brief detailed": "Caption this image - brief detailed.",
+        "Brief detailed": "Caption this image - brief but detailed.",
         "Moderately detailed": "Caption this image - moderately detailed, moderately descriptive.",
         "Highly detailed": "Caption this image - highly detailed, highly descriptive."
     }
@@ -96,6 +111,9 @@ def generate_caption(
     
     return response_only, f"Generated in {execution_time:.2f} seconds"
 
+# ====================================================================
+# GRADIO UI
+# ====================================================================
 # Create Gradio interface
 with gr.Blocks(title="Image Captioner") as demo:
     gr.Markdown("# Image Captioner using SmolVLM-Instruct")
