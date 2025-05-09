@@ -9,6 +9,14 @@ import time
 # Enable MPS fallback to CPU for operations not supported on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
+# Define caption style prompts
+STYLE_PROMPTS = {
+    "Short and concise": "Caption this image, stick to the facts but make it short and concise.",
+    "Brief but detailed": "Caption this image, stick to the facts but make it a bit longer than short, but stil detailed.",
+    "Moderately detailed": "Caption this image, stick to the facts and make it moderately detailed and moderately descriptive.",
+    "Highly detailed": "Caption this image, stick to the facts and make it highly detailed and highly descriptive."
+}
+
 # ====================================================================
 def get_device():
     if torch.cuda.is_available():
@@ -45,28 +53,19 @@ def generate_caption(
     top_p=0.9,
     repetition_penalty=1.1
 ):
+
+    # Check if image is provided, if not, quit and show msg
+    if image is None:
+        msg = "Please upload an image first to generate a caption."
+        return msg, msg
     
-
-    # debug_info = f"""
-    # Image Format: {image.format}
-    # Image Mode: {image.mode}
-    # Image Size: {image.size}
-    # """
-
-    # print(debug_info, color.YELLOW)
-
+        
     start_time = time.time()
+        
+    prompt_text = STYLE_PROMPTS.get(caption_style, "Caption this image.")
     
-    # Define caption style prompts
-    style_prompts = {
-        "Short and concise": "Caption this image - short and concise.",
-        "Brief detailed": "Caption this image - brief but detailed.",
-        "Moderately detailed": "Caption this image - moderately detailed, moderately descriptive.",
-        "Highly detailed": "Caption this image - highly detailed, highly descriptive."
-    }
-    
-    prompt_text = style_prompts.get(caption_style, "Caption this image.")
-    
+    print(f"prompt_text = {prompt_text}", color.ORANGE)
+
     # construct multi-modal input msg
     messages = [
         {
@@ -109,39 +108,71 @@ def generate_caption(
     end_time = time.time()
     execution_time = end_time - start_time
     
-    return response_only, f"Generated in {execution_time:.2f} seconds"
+    # Create editable text     
+    additional_text = response_only
+    
+    return response_only, additional_text
 
 # ====================================================================
 # GRADIO UI
 # ====================================================================
 # Create Gradio interface
-with gr.Blocks(title="Image Captioner") as demo:
-    gr.Markdown("# Image Captioner using SmolVLM-Instruct")
+with gr.Blocks(title="Image Captioner", 
+               css="""           
+                    /* outermost wrapper of the entire Gradio app */         
+                    .gradio-container {
+                        max-width: 100% !important;
+                        margin: 0 auto !important;
+                    }
+                    /* main content area within the Gradio container */
+                    .main {
+                        max-width: 1200px !important;
+                        margin: 0 auto !important;
+                    }
+                    /* Individual columns */
+                    .fixed-width-column {
+                        width: 600px !important;
+                        flex: none !important;
+                    }
+                    /* Custom color for the editable text box */
+                    #additional_text_box textarea {
+                        /*  color: #2563eb !important;  text color */
+                        font-family: 'Courier New', monospace !important; /* Optional: Change font */                        
+                    }                                
+                """) as demo:   
+    
+    gr.Markdown("# Image Captioner : SmolVLM-Instruct")
     gr.Markdown("Upload an image and adjust the settings to generate a caption")
     
     with gr.Row():
-        with gr.Column(scale=1):
-            input_image = gr.Image(type="pil", label="Input Image")
-            
+        with gr.Column(elem_classes=["fixed-width-column"]):
+            input_image = gr.Image(type="pil", label="Input Image", height=512)
+                        
             caption_style = gr.Dropdown(
-                choices=["Short and concise", "Brief detailed", "Moderately detailed", "Highly detailed"],
-                value="Brief detailed",
+                choices=["Short and concise", "Brief but detailed", "Moderately detailed", "Highly detailed"],
+                value="Brief but detailed",
                 label="Caption Style"
             )
             
+            submit_btn = gr.Button("Generate Caption", variant="primary")
+
             with gr.Accordion("Advanced Settings", open=False):
-                max_tokens = gr.Slider(minimum=50, maximum=500, value=156, step=1, label="Max New Tokens")
+                max_tokens = gr.Slider(minimum=50, maximum=500, value=256, step=1, label="Max New Tokens")
                 do_sample_checkbox = gr.Checkbox(value=True, label="Do Sample")
-                temperature_slider = gr.Slider(minimum=0.1, maximum=1.5, value=0.4, step=0.1, label="Temperature")
+                temperature_slider = gr.Slider(minimum=0.1, maximum=1.0, value=0.4, step=0.1, label="Temperature")
                 top_p_slider = gr.Slider(minimum=0.1, maximum=1.0, value=0.9, step=0.1, label="Top P")
                 rep_penalty = gr.Slider(minimum=1.0, maximum=2.0, value=1.1, step=0.1, label="Repetition Penalty")
             
-            submit_btn = gr.Button("Generate Caption", variant="primary")
+            
         
-        with gr.Column(scale=1):
+        with gr.Column(elem_classes=["fixed-width-column"]):
             output_text = gr.Textbox(label="Generated Caption", lines=5)
-            info_text = gr.Textbox(label="Info", lines=1)
+            # Add the new text box here
+            additional_text_box = gr.Textbox(label="Caption (Editable)", lines=4, interactive=True, elem_id="additional_text_box", info="you can edit the caption here before proceeding")
     
+            # Add the Process button under the second column
+            process_btn = gr.Button("Process", variant="secondary")
+
     submit_btn.click(
         fn=generate_caption,
         inputs=[
@@ -153,7 +184,7 @@ with gr.Blocks(title="Image Captioner") as demo:
             top_p_slider,
             rep_penalty
         ],
-        outputs=[output_text, info_text]
+        outputs=[output_text, additional_text_box]
     )
 
     gr.Markdown("""
