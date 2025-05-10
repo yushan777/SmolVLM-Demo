@@ -9,19 +9,20 @@ import time
 from threading import Thread
 from transformers.generation.streamers import TextIteratorStreamer
 
-# Enable MPS fallback to CPU for operations not supported on MPS (Apple Silicon)
+# macOS shit, just in case some pytorch ops are not supported on mps yes, fallback to cpu
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description="Run SmolVLM with Gradio")
 parser.add_argument("--use_stream", action="store_true", help="Use streaming mode for text generation")
+parser.add_argument("--model", 
+                    choices=["SmolVLM-Instruct", "SmolVLM-500M-Instruct", "SmolVLM-256M-Instruct"],
+                    default="SmolVLM-Instruct", 
+                    help="Model to use (default: SmolVLM-Instruct)")
 args = parser.parse_args()
 
-# MODEL PATHS ====================================
-
-MODEL_PATH = "model/SmolVLM-Instruct"
-# MODEL_PATH = "model/SmolVLM-500M-Instruct"
-# MODEL_PATH = "model/SmolVLM-256M-Instruct"
+# MODEL SELECTION AND PATH
+MODEL_PATH = f"model/{args.model}"
 
 # ================================================
 # DEFAULT PARAM VALUESS
