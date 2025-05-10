@@ -53,7 +53,7 @@ def load_model():
     print(f"Using {device} device")
     
     processor = AutoProcessor.from_pretrained(MODEL_PATH)
-    model = AutoModelForVision2Seq.from_pretrained(MODEL_PATH,torch_dtype=torch.float16,_attn_implementation="sdpa").to(device)
+    model = AutoModelForVision2Seq.from_pretrained(MODEL_PATH,torch_dtype=torch.float16,_attn_implementation="flash_attention_2").to(device)
 
 
 
