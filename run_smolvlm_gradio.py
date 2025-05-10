@@ -114,6 +114,10 @@ def generate_caption(
     return response_only, additional_text
 
 # ====================================================================
+def process_caption(additional_text):
+    print("process_caption() called")
+
+# ====================================================================
 # GRADIO UI
 # ====================================================================
 # Create Gradio interface
@@ -157,21 +161,30 @@ with gr.Blocks(title="Image Captioner",
             submit_btn = gr.Button("Generate Caption", variant="primary")
 
             with gr.Accordion("Advanced Settings", open=False):
-                max_tokens = gr.Slider(minimum=50, maximum=500, value=256, step=1, label="Max New Tokens")
+                max_tokens = gr.Slider(minimum=50, maximum=500, value=128, step=1, label="Max New Tokens")
                 do_sample_checkbox = gr.Checkbox(value=True, label="Do Sample")
-                temperature_slider = gr.Slider(minimum=0.1, maximum=1.0, value=0.4, step=0.1, label="Temperature")
+                temperature_slider = gr.Slider(minimum=0.1, maximum=1.0, value=0.6, step=0.1, label="Temperature")
                 top_p_slider = gr.Slider(minimum=0.1, maximum=1.0, value=0.9, step=0.1, label="Top P")
                 rep_penalty = gr.Slider(minimum=1.0, maximum=2.0, value=1.1, step=0.1, label="Repetition Penalty")
+
+                gr.Markdown("""    
+                            ### Parameters:
+                            - **Max New Tokens**: Controls the maximum length of the generated caption
+                            - **Do Sample**: When enabled, uses sampling for more diverse outputs
+                            - **Temperature**: Higher values (>1.0) = output more random, lower values = more deterministic
+                            - **Top P**: Controls diversity via nucleus sampling
+                            - **Repetition Penalty**: Higher values discourage repetition in the text
+                            """)
+
             
-            
-        
+                    
         with gr.Column(elem_classes=["fixed-width-column"]):
             output_text = gr.Textbox(label="Generated Caption", lines=5)
             # Add the new text box here
             additional_text_box = gr.Textbox(label="Caption (Editable)", lines=4, interactive=True, elem_id="additional_text_box", info="you can edit the caption here before proceeding")
     
             # Add the Process button under the second column
-            process_btn = gr.Button("Process", variant="secondary")
+            process_btn = gr.Button("Process", variant="primary")
 
     submit_btn.click(
         fn=generate_caption,
@@ -187,15 +200,12 @@ with gr.Blocks(title="Image Captioner",
         outputs=[output_text, additional_text_box]
     )
 
-    gr.Markdown("""
-    
-    ### Parameters:
-    - **Max New Tokens**: Controls the maximum length of the generated caption
-    - **Do Sample**: When enabled, uses sampling for more diverse outputs
-    - **Temperature**: Higher values (>1.0) make output more random, lower values make it more deterministic
-    - **Top P**: Controls diversity via nucleus sampling
-    - **Repetition Penalty**: Higher values discourage repetition in the text
-    """)
+    # Add the click handler for the Process button
+    process_btn.click(
+        fn=process_caption,
+        inputs=[additional_text_box]
+    )    
+
 
 # Launch the Gradio app
 if __name__ == "__main__":
