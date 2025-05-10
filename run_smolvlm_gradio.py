@@ -1,3 +1,4 @@
+import argparse
 import torch
 from PIL import Image
 from transformers import AutoProcessor, AutoModelForVision2Seq, AutoModelForImageTextToText
@@ -5,10 +6,16 @@ import gradio as gr
 from colored_print import color, style
 import os
 import time
+from threading import Thread
+from transformers.generation.streamers import TextIteratorStreamer
 
-# Enable MPS fallback to CPU for operations not supported on MPS
+# Enable MPS fallback to CPU for operations not supported on MPS (Apple Silicon)
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
+# Parse command line arguments
+parser = argparse.ArgumentParser(description="Run SmolVLM with Gradio")
+parser.add_argument("--use_stream", action="store_true", help="Use streaming mode for text generation")
+args = parser.parse_args()
 
 # MODEL PATHS ====================================
 
@@ -17,7 +24,7 @@ MODEL_PATH = "model/SmolVLM-Instruct"
 # MODEL_PATH = "model/SmolVLM-256M-Instruct"
 
 # ================================================
-# DEFAULT VALS
+# DEFAULT PARAM VALUESS
 MAX_NEW_TOKENS = 512
 REP_PENALTY = 1.2
 
@@ -25,7 +32,6 @@ REP_PENALTY = 1.2
 DO_SAMPLING = False
 TOP_P = 0.8
 TEMP = 0.4
-
 
 # Define caption style prompts
 STYLE_PROMPTS = {
@@ -51,11 +57,47 @@ def load_model():
     print(f"Using {device} device")
     
     processor = AutoProcessor.from_pretrained(MODEL_PATH)
-    model = AutoModelForVision2Seq.from_pretrained(MODEL_PATH,torch_dtype=torch.float16,_attn_implementation="flash_attention_2").to(device)
+    
+    # Attention fallback order 
+    attention_fallback = [
+        "flash_attention_2",  # Best performance if available
+        "sdpa",              # Good default in PyTorch 2.0+
+        "xformers",          # Good alternative, memory efficient
+        "eager",             # Reliable fallback
+        None                 # Absolute fallback
+    ]
+    
+    # Try each attention implementation
+    for impl in attention_fallback:
+        try:
+            if impl is not None:
+                model = AutoModelForVision2Seq.from_pretrained(
+                    MODEL_PATH,
+                    torch_dtype=torch.float16,
+                    _attn_implementation=impl
+                ).to(device)
+                print(f"✓ Loaded with {impl} attention", color.GREEN)
+            else:
+                model = AutoModelForVision2Seq.from_pretrained(
+                    MODEL_PATH,
+                    torch_dtype=torch.float16
+                ).to(device)
+                print("✓ Loaded with no attention specified", color.GREEN)
 
-
-
-    return processor, model, device
+            return processor, model, device
+        
+        except ImportError as e:
+            if impl == "flash_attention_2" and "flash_attn" in str(e):
+                print(f"  flash_attention_2 not available (package not installed)", color.YELLOW)
+            else:
+                print(f"  Failed with {impl}: {e}", color.RED)
+            continue
+        except Exception as e:
+            print(f"  Failed with {impl}: {e}", color.RED)
+            continue
+    
+    # If we get here, all attempts failed
+    raise Exception("Failed to load model with any attention implementation")
 
 # ====================================================================
 # Load model and processor at startup
@@ -65,10 +107,11 @@ processor, model, DEVICE = load_model()
 
 end_time = time.time()
 model_load_time = end_time - start_time
-print(f"Model {os.path.basename(MODEL_PATH)} loaded on {DEVICE} in {model_load_time:.2f} seconds.\n", color.BRIGHT_BLUE)
+print(f"Model {os.path.basename(MODEL_PATH)} loaded on {DEVICE} in {model_load_time:.2f} seconds.", color.GREEN)
+print(f"Running in {'streaming' if args.use_stream else 'non-streaming'} mode.\n", color.BLUE)
 
 # ====================================================================
-def generate_caption(
+def generate_caption_streaming(
     image, 
     caption_style,
     max_new_tokens=MAX_NEW_TOKENS,
@@ -76,20 +119,101 @@ def generate_caption(
     do_sample=DO_SAMPLING,
     temperature=TEMP,
     top_p=TOP_P
-    
 ):
-
+    """Streaming version of caption generation"""
     # Check if image is provided, if not, quit and show msg
     if image is None:
         msg = "Please upload an image first to generate a caption."
-        return msg, msg
+        yield msg
+        return
     
-        
     start_time = time.time()
         
     prompt_text = STYLE_PROMPTS.get(caption_style, "Caption this image.")
+
+    # construct multi-modal input msg
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image"},
+                {"type": "text", "text": prompt_text}
+            ]
+        },
+    ]
+
+    # Prepare inputs
+    prompt = processor.apply_chat_template(messages, add_generation_prompt=True)
+    inputs_data = processor(text=prompt, images=[image], return_tensors="pt")
+    inputs_data = inputs_data.to(DEVICE)
+
+    # Setup streamer
+    streamer = TextIteratorStreamer(processor, skip_prompt=True, skip_special_tokens=True)
+
+    # Prepare generation arguments
+    generation_args = {
+        **inputs_data, 
+        "streamer": streamer,
+        "max_new_tokens": max_new_tokens,
+        "repetition_penalty": repetition_penalty,
+        "do_sample": do_sample,
+    }
+    if do_sample:
+        generation_args["temperature"] = temperature
+        generation_args["top_p"] = top_p
+
+    # Run generation in a separate thread
+    thread = Thread(target=model.generate, kwargs=generation_args)
+    thread.start()
+
+    # Yield generated text as it comes in
+    generated_text_so_far = ""
+    is_first_chunk = True # used for stripping away leading space from first chunk (below)
     
-    # print(f"prompt_text = {prompt_text}", color.ORANGE)
+    for new_text_chunk in streamer:
+        # Strip leading space from the first chunk only
+        if is_first_chunk:
+            new_text_chunk = new_text_chunk.lstrip()
+            is_first_chunk = False
+        
+        generated_text_so_far += new_text_chunk
+        yield generated_text_so_far
+
+    # # Yield generated text as it comes in
+    # generated_text_so_far = ""
+    # for new_text_chunk in streamer:
+    #     generated_text_so_far += new_text_chunk
+    #     yield generated_text_so_far
+
+    thread.join()
+    
+    end_time = time.time()
+    execution_time = end_time - start_time
+    
+    # Optional: print final caption to console for logging
+    if generated_text_so_far:
+        print(f"Generated caption: '{generated_text_so_far.strip()}'", color.GREEN)
+    print(f"Execution_time = {execution_time:.2f} seconds.", color.BRIGHT_BLUE)
+
+# ====================================================================
+def generate_caption_non_streaming(
+    image, 
+    caption_style,
+    max_new_tokens=MAX_NEW_TOKENS,
+    repetition_penalty=REP_PENALTY,
+    do_sample=DO_SAMPLING,
+    temperature=TEMP,
+    top_p=TOP_P
+):
+    """Non-streaming version of caption generation"""
+    # Check if image is provided, if not, quit and show msg
+    if image is None:
+        msg = "Please upload an image first to generate a caption."
+        return msg
+    
+    start_time = time.time()
+        
+    prompt_text = STYLE_PROMPTS.get(caption_style, "Caption this image.")
 
     # construct multi-modal input msg
     messages = [
@@ -105,9 +229,6 @@ def generate_caption(
     # Prepare inputs
     prompt = processor.apply_chat_template(messages, add_generation_prompt=True)
     inputs = processor(text=prompt, images=[image], return_tensors="pt")
-
-
-
     inputs = inputs.to(DEVICE)
 
     # Generate args
@@ -142,7 +263,8 @@ def generate_caption(
     end_time = time.time()
     execution_time = end_time - start_time
     
-    print(f"execution_time = {execution_time:.2f} seconds.", color.BRIGHT_BLUE)
+    print(f"Generated caption: '{response_only}'", color.GREEN)
+    print(f"Execution_time = {execution_time:.2f} seconds.", color.BRIGHT_BLUE)
     
     return response_only
 
@@ -153,8 +275,31 @@ def process_edited_caption(additional_text):
 # ====================================================================
 # GRADIO UI
 # ====================================================================
+# Create custom theme
+custom_theme = gr.themes.Base(
+    primary_hue=gr.themes.Color(
+        c50="#faf8fc",
+        c100="#f3edf7",
+        c200="#e7dbe9",
+        c300="#d9c7dc",
+        c400="#c9b3ce",
+        c500="#7d539a",   # Your main color
+        c600="#7d539a",
+        c700="#68447f",
+        c800="#533666",
+        c900="#3f2850",
+        c950="#2a1b36"
+    )
+).set(
+    button_primary_background_fill="#7d539a",
+    button_primary_background_fill_hover="#68447f",
+    button_primary_text_color="white",
+    block_label_text_color="#1f2937",
+    input_border_color="#e5e7eb",
+)
+
 # Create Gradio interface
-with gr.Blocks(title="Image Captioner", 
+with gr.Blocks(title="Image Captioner", theme=custom_theme,  
                css="""           
                     /* outermost wrapper of the entire Gradio app */         
                     .gradio-container {
@@ -179,7 +324,11 @@ with gr.Blocks(title="Image Captioner",
                     }                                
                 """) as demo:   
     
-    gr.Markdown("# Image Captioner : SmolVLM-Instruct")
+    gr.Markdown("# Image Captioner : SmolVLM-Instruct")    
+    model_name = os.path.basename(MODEL_PATH)
+    mode = "Streaming" if args.use_stream else "Non-streaming"
+    gr.Markdown(f"**Model**: {model_name} | **Mode**: {mode}")
+    
     gr.Markdown("Upload an image and adjust the settings to generate a caption")
     
     with gr.Row():
@@ -189,9 +338,6 @@ with gr.Blocks(title="Image Captioner",
             input_image = gr.Image(type="pil", label="Input Image", height=512)
                                     
             submit_btn = gr.Button("Generate Caption", variant="primary")
-
-
-
             
         # ================================================
         # COL 2                    
@@ -214,8 +360,6 @@ with gr.Blocks(title="Image Captioner",
                     with gr.Row():
                         temperature_slider = gr.Slider(minimum=0.1, maximum=1.0, value=TEMP, step=0.1, label="Temperature")
                         top_p_slider = gr.Slider(minimum=0.1, maximum=1.0, value=TOP_P, step=0.1, label="Top P")
-                
-                
 
                 gr.Markdown("""    
                             ### Parameters:
@@ -234,8 +378,11 @@ with gr.Blocks(title="Image Captioner",
             # Add the Process button under the second column
             process_btn = gr.Button("Continue", variant="primary")
 
+    # Choose the appropriate generate function based on the argument
+    generate_function = generate_caption_streaming if args.use_stream else generate_caption_non_streaming
+
     submit_btn.click(
-        fn=generate_caption,
+        fn=generate_function,
         inputs=[
             input_image,
             caption_style,
@@ -255,8 +402,6 @@ with gr.Blocks(title="Image Captioner",
         inputs=[output_text]
     )    
 
-
 # Launch the Gradio app
 if __name__ == "__main__":
-    
     demo.launch()
