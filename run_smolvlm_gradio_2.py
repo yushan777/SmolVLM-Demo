@@ -5,6 +5,8 @@ import gradio as gr
 from colored_print import color, style
 import os
 import time
+from threading import Thread
+from transformers.generation.streamers import TextIteratorStreamer
 
 # Enable MPS fallback to CPU for operations not supported on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -82,9 +84,11 @@ def generate_caption(
     # Check if image is provided, if not, quit and show msg
     if image is None:
         msg = "Please upload an image first to generate a caption."
-        return msg, msg
+        # Since this is now a generator, yield the message and return
+        # Gradio expects a single output for output_text
+        yield msg
+        return
     
-        
     start_time = time.time()
         
     prompt_text = STYLE_PROMPTS.get(caption_style, "Caption this image.")
@@ -104,47 +108,53 @@ def generate_caption(
 
     # Prepare inputs
     prompt = processor.apply_chat_template(messages, add_generation_prompt=True)
-    inputs = processor(text=prompt, images=[image], return_tensors="pt")
+    # Renamed 'inputs' to 'inputs_data' for clarity, though not strictly necessary here
+    inputs_data = processor(text=prompt, images=[image], return_tensors="pt")
+    inputs_data = inputs_data.to(DEVICE)
 
+    # Setup streamer
+    # skip_prompt=True ensures that the streamer doesn't yield the input prompt text
+    # skip_special_tokens=True ensures that special tokens like <s>, </s> are not yielded
+    streamer = TextIteratorStreamer(processor, skip_prompt=True, skip_special_tokens=True)
 
-
-    inputs = inputs.to(DEVICE)
-
-    # Generate args
-    generation_kwargs = {
+    # Prepare generation arguments
+    # inputs_data already contains input_ids, attention_mask, pixel_values, all moved to DEVICE
+    generation_args = {
+        **inputs_data, 
+        "streamer": streamer,
         "max_new_tokens": max_new_tokens,
         "repetition_penalty": repetition_penalty,
         "do_sample": do_sample,
     }
-    # only include temp and top p if do sample
     if do_sample:
-        generation_kwargs["temperature"] = temperature
-        generation_kwargs["top_p"] = top_p
+        generation_args["temperature"] = temperature
+        generation_args["top_p"] = top_p
 
-    generated_ids = model.generate(
-        **inputs,
-        **generation_kwargs
-    )
+    # Run generation in a separate thread
+    # model.generate will call streamer.put() internally
+    thread = Thread(target=model.generate, kwargs=generation_args)
+    thread.start()
 
-    generated_texts = processor.batch_decode(
-        generated_ids,
-        skip_special_tokens=True,
-    )
+    # Yield generated text as it comes in
+    # Each item from the streamer is a chunk of newly generated text
+    generated_text_so_far = ""
+    for new_text_chunk in streamer:
+        generated_text_so_far += new_text_chunk
+        yield generated_text_so_far # Yield cumulative text to update Gradio UI
 
-    # Get only the assistant's response
-    full_output = generated_texts[0]
-    
-    if "Assistant:" in full_output:
-        response_only = full_output.split("Assistant: ")[-1].strip()
-    else:
-        response_only = full_output.strip()
+    thread.join() # Ensure thread finishes before calculating execution time
     
     end_time = time.time()
     execution_time = end_time - start_time
     
-    print(f"execution_time = {execution_time:.2f} seconds.", color.BRIGHT_BLUE)
+    # Optional: print final caption to console for logging
+    if generated_text_so_far: # Check if any text was generated
+        print(f"Generated caption: '{generated_text_so_far.strip()}'", color.GREEN)
+    print(f"Execution_time = {execution_time:.2f} seconds.", color.BRIGHT_BLUE)
     
-    return response_only
+    # For a generator function used with Gradio, the last yielded value 
+    # (generated_text_so_far) is taken as the final output.
+    # No explicit 'return generated_text_so_far' is needed here.
 
 # ====================================================================
 def process_edited_caption(additional_text):
