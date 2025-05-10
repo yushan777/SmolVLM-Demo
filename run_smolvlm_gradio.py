@@ -1,6 +1,6 @@
 import torch
 from PIL import Image
-from transformers import AutoProcessor, AutoModelForVision2Seq
+from transformers import AutoProcessor, AutoModelForVision2Seq, AutoModelForImageTextToText
 import gradio as gr
 from colored_print import color, style
 import os
@@ -9,13 +9,32 @@ import time
 # Enable MPS fallback to CPU for operations not supported on MPS
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
+
+# MODEL PATHS ====================================
+
+MODEL_PATH = "model/SmolVLM-Instruct"
+# MODEL_PATH = "model/SmolVLM-500M-Instruct"
+# MODEL_PATH = "model/SmolVLM-256M-Instruct"
+
+# ================================================
+# DEFAULT VALS
+MAX_NEW_TOKENS = 512
+REP_PENALTY = 1.2
+
+# TOP P SAMPLING VALUES
+DO_SAMPLING = False
+TOP_P = 0.8
+TEMP = 0.4
+
+
 # Define caption style prompts
 STYLE_PROMPTS = {
-    "Short and concise": "Caption this image, stick to the facts but make it short and concise.",
-    "Brief but detailed": "Caption this image, stick to the facts but make it a bit longer than short, but stil detailed.",
-    "Moderately detailed": "Caption this image, stick to the facts and make it moderately detailed and moderately descriptive.",
-    "Highly detailed": "Caption this image, stick to the facts and make it highly detailed and highly descriptive."
+    "Brief and concise": "Caption this image with a brief and concise description.",
+    "Moderately detailed": "Caption this image with a moderately detailed description.",
+    "Highly detailed": "Caption this image with a highly detailed and comprehensive description."
 }
+# list of just the keys for gradio dropdown
+CAPTION_STYLE_OPTIONS = list(STYLE_PROMPTS.keys())
 
 # ====================================================================
 def get_device():
@@ -31,27 +50,29 @@ def load_model():
     device = get_device()
     print(f"Using {device} device")
     
-    processor = AutoProcessor.from_pretrained("model/SmolVLM-Instruct")
-    model = AutoModelForVision2Seq.from_pretrained(
-        "model/SmolVLM-Instruct",
-        torch_dtype=torch.float16,  # Keep half precision for efficiency
-    ).to(device)
-    
+    processor = AutoProcessor.from_pretrained(MODEL_PATH)
+    model = AutoModelForVision2Seq.from_pretrained(MODEL_PATH,torch_dtype=torch.float16,_attn_implementation="sdpa").to(device)
+
+
+
     return processor, model, device
 
 # ====================================================================
 # Load model and processor at startup
 processor, model, DEVICE = load_model()
 
+print(f"Model {os.path.basename(MODEL_PATH)} loaded on {DEVICE}", color.ORANGE)
+
 # ====================================================================
 def generate_caption(
     image, 
     caption_style,
-    max_new_tokens=156,
-    do_sample=True,
-    temperature=0.4,
-    top_p=0.9,
-    repetition_penalty=1.1
+    max_new_tokens=MAX_NEW_TOKENS,
+    repetition_penalty=REP_PENALTY,
+    do_sample=DO_SAMPLING,
+    temperature=TEMP,
+    top_p=TOP_P
+    
 ):
 
     # Check if image is provided, if not, quit and show msg
@@ -64,7 +85,7 @@ def generate_caption(
         
     prompt_text = STYLE_PROMPTS.get(caption_style, "Caption this image.")
     
-    print(f"prompt_text = {prompt_text}", color.ORANGE)
+    # print(f"prompt_text = {prompt_text}", color.ORANGE)
 
     # construct multi-modal input msg
     messages = [
@@ -80,16 +101,25 @@ def generate_caption(
     # Prepare inputs
     prompt = processor.apply_chat_template(messages, add_generation_prompt=True)
     inputs = processor(text=prompt, images=[image], return_tensors="pt")
+
+
+
     inputs = inputs.to(DEVICE)
 
-    # Generate outputs
+    # Generate args
+    generation_kwargs = {
+        "max_new_tokens": max_new_tokens,
+        "repetition_penalty": repetition_penalty,
+        "do_sample": do_sample,
+    }
+    # only include temp and top p if do sample
+    if do_sample:
+        generation_kwargs["temperature"] = temperature
+        generation_kwargs["top_p"] = top_p
+
     generated_ids = model.generate(
-        **inputs, 
-        max_new_tokens=max_new_tokens,
-        do_sample=do_sample,
-        temperature=temperature,
-        top_p=top_p,
-        repetition_penalty=repetition_penalty,
+        **inputs,
+        **generation_kwargs
     )
 
     generated_texts = processor.batch_decode(
@@ -108,14 +138,13 @@ def generate_caption(
     end_time = time.time()
     execution_time = end_time - start_time
     
-    # Create editable text     
-    additional_text = response_only
+    print(f"execution_time = {execution_time:.2f} seconds.", color.BRIGHT_BLUE)
     
-    return response_only, additional_text
+    return response_only
 
 # ====================================================================
-def process_caption(additional_text):
-    print("process_caption() called")
+def process_edited_caption(additional_text):
+    print(additional_text)
 
 # ====================================================================
 # GRADIO UI
@@ -139,9 +168,10 @@ with gr.Blocks(title="Image Captioner",
                         flex: none !important;
                     }
                     /* Custom color for the editable text box */
-                    #additional_text_box textarea {
+                    #text_box textarea {
                         /*  color: #2563eb !important;  text color */
-                        font-family: 'Courier New', monospace !important; /* Optional: Change font */                        
+                        font-family: 'monospace', monospace !important; 
+                        font-size: 12px !important; 
                     }                                
                 """) as demo:   
     
@@ -149,42 +179,56 @@ with gr.Blocks(title="Image Captioner",
     gr.Markdown("Upload an image and adjust the settings to generate a caption")
     
     with gr.Row():
+        # ================================================
+        # COL 1
         with gr.Column(elem_classes=["fixed-width-column"]):
             input_image = gr.Image(type="pil", label="Input Image", height=512)
-                        
+                                    
+            submit_btn = gr.Button("Generate Caption", variant="primary")
+
+
+
+            
+        # ================================================
+        # COL 2                    
+        with gr.Column(elem_classes=["fixed-width-column"]):
+
             caption_style = gr.Dropdown(
-                choices=["Short and concise", "Brief but detailed", "Moderately detailed", "Highly detailed"],
-                value="Brief but detailed",
+                choices=CAPTION_STYLE_OPTIONS,
+                value=CAPTION_STYLE_OPTIONS[1] if len(CAPTION_STYLE_OPTIONS) > 1 else CAPTION_STYLE_OPTIONS[0] if CAPTION_STYLE_OPTIONS else "Moderately detailed",
                 label="Caption Style"
             )
             
-            submit_btn = gr.Button("Generate Caption", variant="primary")
-
             with gr.Accordion("Advanced Settings", open=False):
-                max_tokens = gr.Slider(minimum=50, maximum=500, value=128, step=1, label="Max New Tokens")
-                do_sample_checkbox = gr.Checkbox(value=True, label="Do Sample")
-                temperature_slider = gr.Slider(minimum=0.1, maximum=1.0, value=0.6, step=0.1, label="Temperature")
-                top_p_slider = gr.Slider(minimum=0.1, maximum=1.0, value=0.9, step=0.1, label="Top P")
-                rep_penalty = gr.Slider(minimum=1.0, maximum=2.0, value=1.1, step=0.1, label="Repetition Penalty")
+                with gr.Row():
+                    max_tokens = gr.Slider(minimum=50, maximum=1024, value=MAX_NEW_TOKENS, step=1, label="Max New Tokens")
+                    rep_penalty = gr.Slider(minimum=1.0, maximum=2.0, value=REP_PENALTY, step=0.1, label="Repetition Penalty")
+
+                # Group the sampling-related controls together
+                with gr.Group():
+                    do_sample_checkbox = gr.Checkbox(value=DO_SAMPLING, label="Do Sample")
+                    with gr.Row():
+                        temperature_slider = gr.Slider(minimum=0.1, maximum=1.0, value=TEMP, step=0.1, label="Temperature")
+                        top_p_slider = gr.Slider(minimum=0.1, maximum=1.0, value=TOP_P, step=0.1, label="Top P")
+                
+                
 
                 gr.Markdown("""    
                             ### Parameters:
                             - **Max New Tokens**: Controls the maximum length of the generated caption
-                            - **Do Sample**: When enabled, uses sampling for more diverse outputs
-                            - **Temperature**: Higher values (>1.0) = output more random, lower values = more deterministic
-                            - **Top P**: Controls diversity via nucleus sampling
                             - **Repetition Penalty**: Higher values discourage repetition in the text
+                            - **Do Sample**: Enabled: uses Top P sampling for more diverse outputs. Disabled: use greedy mode (deterministic)
+                            - **Temperature**: Higher values (>1.0) = output more random, lower values = more deterministic
+                            - **Top P**: Higher values (0.8-0.95): More variability, more diverse outputs, Lower values (0.1-0.5): Less variability, more consistent outputs
+                            
                             """)
-
-            
-                    
-        with gr.Column(elem_classes=["fixed-width-column"]):
-            output_text = gr.Textbox(label="Generated Caption", lines=5)
-            # Add the new text box here
-            additional_text_box = gr.Textbox(label="Caption (Editable)", lines=4, interactive=True, elem_id="additional_text_box", info="you can edit the caption here before proceeding")
+                
+    with gr.Row():
+        with gr.Column():
+            output_text = gr.Textbox(label="Generated Caption", lines=5, interactive=True, elem_id="text_box", info="you can edit the caption here before proceeding")
     
             # Add the Process button under the second column
-            process_btn = gr.Button("Process", variant="primary")
+            process_btn = gr.Button("Continue", variant="primary")
 
     submit_btn.click(
         fn=generate_caption,
@@ -192,22 +236,23 @@ with gr.Blocks(title="Image Captioner",
             input_image,
             caption_style,
             max_tokens,
+            rep_penalty,
             do_sample_checkbox,
             temperature_slider,
-            top_p_slider,
-            rep_penalty
+            top_p_slider
+            
         ],
-        outputs=[output_text, additional_text_box]
+        outputs=[output_text]
     )
 
     # Add the click handler for the Process button
     process_btn.click(
-        fn=process_caption,
-        inputs=[additional_text_box]
+        fn=process_edited_caption,
+        inputs=[output_text]
     )    
 
 
 # Launch the Gradio app
 if __name__ == "__main__":
-    print(f"Model loaded on {DEVICE}")
+    
     demo.launch()

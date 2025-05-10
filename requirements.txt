@@ -1,6 +1,7 @@
 Pillow
 transformers
 wheel
+ninja
 # flash-attn
 torch
 gradio
