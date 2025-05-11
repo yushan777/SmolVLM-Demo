@@ -113,7 +113,8 @@ print(f"Running in {'streaming' if args.use_stream else 'non-streaming'} mode.\n
 
 # ====================================================================
 def generate_caption_streaming(
-    image, 
+    image,
+    custom_prompt, # Added custom_prompt
     caption_style,
     max_new_tokens=MAX_NEW_TOKENS,
     repetition_penalty=REP_PENALTY,
@@ -129,8 +130,11 @@ def generate_caption_streaming(
         return
     
     start_time = time.time()
-        
-    prompt_text = STYLE_PROMPTS.get(caption_style, "Caption this image.")
+    
+    if custom_prompt and custom_prompt.strip():
+        prompt_text = custom_prompt.strip()
+    else:
+        prompt_text = STYLE_PROMPTS.get(caption_style, "Caption this image.")
 
     # construct multi-modal input msg
     messages = [
@@ -198,7 +202,8 @@ def generate_caption_streaming(
 
 # ====================================================================
 def generate_caption_non_streaming(
-    image, 
+    image,
+    custom_prompt, # Added custom_prompt
     caption_style,
     max_new_tokens=MAX_NEW_TOKENS,
     repetition_penalty=REP_PENALTY,
@@ -214,7 +219,10 @@ def generate_caption_non_streaming(
     
     start_time = time.time()
         
-    prompt_text = STYLE_PROMPTS.get(caption_style, "Caption this image.")
+    if custom_prompt and custom_prompt.strip():
+        prompt_text = custom_prompt.strip()
+    else:
+        prompt_text = STYLE_PROMPTS.get(caption_style, "Caption this image.")
 
     # construct multi-modal input msg
     messages = [
@@ -343,6 +351,12 @@ with gr.Blocks(title="Image Captioner", theme=custom_theme,
         # ================================================
         # COL 2                    
         with gr.Column(elem_classes=["fixed-width-column"]):
+            
+            custom_prompt_textbox = gr.Textbox(
+                                        label="Custom Query/Prompt (Optional)", 
+                                        placeholder="Enter your custom query here, or select a caption preset below.", 
+                                        lines=2
+                                        )
 
             caption_style = gr.Dropdown(
                 choices=CAPTION_STYLE_OPTIONS,
@@ -386,6 +400,7 @@ with gr.Blocks(title="Image Captioner", theme=custom_theme,
         fn=generate_function,
         inputs=[
             input_image,
+            custom_prompt_textbox, # Added custom_prompt_textbox
             caption_style,
             max_tokens,
             rep_penalty,
@@ -401,7 +416,12 @@ with gr.Blocks(title="Image Captioner", theme=custom_theme,
     process_btn.click(
         fn=process_edited_caption,
         inputs=[output_text]
-    )    
+    )
+
+    # Update the generate_function to use the custom prompt if provided
+    # We need to modify how `prompt_text` is determined in both streaming and non-streaming functions.
+    # This requires modifying the `generate_caption_streaming` and `generate_caption_non_streaming` functions.
+    # The `inputs` for `submit_btn.click` now include `custom_prompt_textbox`.
 
 # Launch the Gradio app
 if __name__ == "__main__":
