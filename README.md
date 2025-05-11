@@ -1,3 +1,18 @@
+
+
+## Install Venv
+
+```
+python3 -m venv venv
+source venv/bin/activate
+
+pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --extra-index-url https://download.pytorch.org/whl/cu126
+
+pip install -r requirements.txt
+```
+
+
+
 ## Generation Parameters for SmolVLM
 
 ### 1. max_new_tokens

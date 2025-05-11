@@ -3,5 +3,5 @@ transformers
 # wheel
 # ninja
 # flash-attn
-torch
+# torch
 gradio
