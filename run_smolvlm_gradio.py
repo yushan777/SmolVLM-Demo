@@ -57,6 +57,10 @@ def load_model():
     device = get_device()
     print(f"Using {device} device")
     
+
+    # FIRST CHECK IF MODEL EXISTS IN LOCAL DIRECTORY (./models/)
+
+
     processor = AutoProcessor.from_pretrained(MODEL_PATH)
     
     # Attention fallback order 
@@ -101,9 +105,22 @@ def load_model():
     raise Exception("Failed to load model with any attention implementation")
 
 # ====================================================================
+def check_model_exists():
+
+    # first check directory exists..
+
+    # next check all necessary files exist...
+
+    # if not, then download it into models/model-name
+
+    
+
+
+
 # Load model and processor at startup
 start_time = time.time()
 
+# LOAD MODEL
 processor, model, DEVICE = load_model()
 
 end_time = time.time()
