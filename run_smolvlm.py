@@ -6,6 +6,7 @@ from colored_print import color, style
 import os
 import time
 import sys
+import json
 import argparse
 from threading import Thread
 from transformers.generation.streamers import TextIteratorStreamer
@@ -63,12 +64,16 @@ def check_model_files(model_path):
     return False 
 
             
-
-
+# ==============================================================
+def hash_file(filepath, chunk_size=1024 * 1024):  # default 1MB
+    h = xxhash.xxh3_64()
+    with open(filepath, 'rb') as f:
+        for chunk in iter(lambda: f.read(chunk_size), b''):
+            h.update(chunk)
+    return h.hexdigest()
 
 # ==========================================================================
-def validate_model_files(model_path):
-
+def validate_model_files(model_path, chunk_size=1024 * 1024):
     # files hashed with xxhash.xxh3_64()
     
     if "SmolVLM-256M-Instruct" in model_path:
@@ -85,7 +90,6 @@ def validate_model_files(model_path):
             {"name": "tokenizer.json","hash": "7c81a296f87a3d25"},
             {"name": "tokenizer_config.json","hash": "1179e1f25d5b3e19"},
             {"name": "vocab.json","hash": "e3790d332807f48a"},
-
         ]
     elif "SmolVLM-500M-Instruct" in model_path:
         required_files = [
@@ -118,41 +122,37 @@ def validate_model_files(model_path):
             {"name": "vocab.json", "hash": "e3790d332807f48a"},
         ]
     else:
-        # Handle the case where none of the conditions match
         print(f"❌ Unknown model type: {model_path}", color.RED)
         return False        
-    
-    # Check if all required files exist and have correct hashes
+
+    valid = True  # assume everything is fine until proven otherwise
+
     for file_info in required_files:
         file_path = os.path.join(model_path, file_info["name"])
         
-        # Check if file exists
         if not os.path.isfile(file_path):
             print(f"❌ Missing file: {file_info['name']}", color.RED)
-            return False
-            
-        # Check file hash
+            valid = False
+            continue
+
         try:
-            with open(file_path, "rb") as f:
-                file_hash = hash_file(file_path)
-                print(f'{file_hash} : {file_info["hash"]}', color.BRIGHT_BLUE)
+            file_hash = hash_file(file_path, chunk_size=chunk_size)
 
-            if file_hash != file_info["hash"]:
-                print(f"❌ Hash mismatch for {file_info['name']}: expected {file_info['hash']}, got {file_hash}", color.RED)
-                return False
+            if file_hash == file_info["hash"]:    
+                # print(f' - {file_info["name"]}: {file_hash}: OKAY', color.BRIGHT_GREEN)
+                pass
+            else:
+                print(f' - {file_info["name"]}: {file_hash}: MISMATCH. Expected {file_info["hash"]}', color.BRIGHT_RED)
+                valid = False
+
         except Exception as e:
-            print(f"❌ Error checking hash for {file_info['name']}: {str(e)}", color.RED)
-            return False
-    
-    return True
+            print(f'❌ Error checking hash for {file_info["name"]}: {str(e)}', color.RED)
+            valid = False
 
-# ==============================================================
-def hash_file(filepath, chunk_size=1024 * 1024):  # default 1MB
-    h = xxhash.xxh3_64()
-    with open(filepath, 'rb') as f:
-        for chunk in iter(lambda: f.read(chunk_size), b''):
-            h.update(chunk)
-    return h.hexdigest()
+    return valid
+
+
+
 
 # ===============================================================
 def main():

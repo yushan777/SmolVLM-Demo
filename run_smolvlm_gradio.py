@@ -8,6 +8,8 @@ import os
 import time
 from threading import Thread
 from transformers.generation.streamers import TextIteratorStreamer
+from huggingface_hub import snapshot_download
+import xxhash
 
 # macOS shit, just in case some pytorch ops are not supported on mps yes, fallback to cpu
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -51,6 +53,137 @@ def get_device():
         return "mps"
     else:
         return "cpu"
+
+# ==============================================================
+def download_model_from_HF(model_path):
+    
+    # Download model from HF.
+    REPO_NAME = f"yushan777/{os.path.basename(model_path)}"
+
+    try:
+        print(f"⬇️ Downloading model from HuggingFace repo: {REPO_NAME}", color.ORANGE)
+        
+        # Download the repository to the specified path
+        snapshot_download(
+            repo_id=REPO_NAME,
+            local_dir=model_path,
+            local_dir_use_symlinks=False,  
+        )
+        
+        print(f"✅ Model downloaded successfully", color.GREEN)
+        
+        # Verify the downloaded files
+        if validate_model_files(model_path):
+            print(f"✅ Downloaded files validated", color.GREEN)
+            return True
+        else:
+            print(f"❌ Downloaded files validation failed", color.RED)
+            return False
+            
+    except Exception as e:
+        print(f"❌ Failed to download model: {str(e)}", color.RED)
+        return False
+
+# ==============================================================
+def check_model_files(model_path):
+    print(f"Checking Model Path: {model_path}", color.ORANGE)
+
+    # validate model files first
+    if validate_model_files(model_path):
+        print(f"✅ All model files are valid", color.GREEN)
+        return True
+    
+    # If we get here, either directory doesn't exist or files are invalid
+    print(f"⚠️ Model files are missing or corrupted - attempting to download", color.YELLOW)
+    return False 
+
+            
+# ==============================================================
+def hash_file(filepath, chunk_size=1024 * 1024):  # default 1MB
+    h = xxhash.xxh3_64()
+    with open(filepath, 'rb') as f:
+        for chunk in iter(lambda: f.read(chunk_size), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+# ==========================================================================
+def validate_model_files(model_path, chunk_size=1024 * 1024):
+    # files hashed with xxhash.xxh3_64()
+    
+    if "SmolVLM-256M-Instruct" in model_path:
+        required_files = [
+            {"name": "added_tokens.json","hash": "966a479d6d5d5128"},
+            {"name": "chat_template.json","hash": "23bf0f409ddc6e30"},
+            {"name": "config.json","hash": "6489279a8c3c5ae7"},
+            {"name": "generation_config.json","hash": "6e99ea1697338d6d"},
+            {"name": "merges.txt","hash": "4d16a8257a0470ad"},
+            {"name": "model.safetensors","hash": "804a944c3ae77765"},
+            {"name": "preprocessor_config.json","hash": "2bdb8382f60bdb98"},
+            {"name": "processor_config.json","hash": "1db78eee2f186fd5"},
+            {"name": "special_tokens_map.json","hash": "5969276611f60ff1"},
+            {"name": "tokenizer.json","hash": "7c81a296f87a3d25"},
+            {"name": "tokenizer_config.json","hash": "1179e1f25d5b3e19"},
+            {"name": "vocab.json","hash": "e3790d332807f48a"},
+        ]
+    elif "SmolVLM-500M-Instruct" in model_path:
+        required_files = [
+            {"name": "added_tokens.json", "hash": "966a479d6d5d5128"},
+            {"name": "chat_template.json", "hash": "23bf0f409ddc6e30"},
+            {"name": "config.json", "hash": "32fbfed32a41d912"},
+            {"name": "generation_config.json", "hash": "6e99ea1697338d6d"},
+            {"name": "merges.txt", "hash": "4d16a8257a0470ad"},
+            {"name": "model.safetensors", "hash": "6db68c3544f56c2f"},
+            {"name": "preprocessor_config.json", "hash": "2bdb8382f60bdb98"},
+            {"name": "processor_config.json", "hash": "1db78eee2f186fd5"},
+            {"name": "special_tokens_map.json", "hash": "5969276611f60ff1"},
+            {"name": "tokenizer.json", "hash": "7c81a296f87a3d25"},
+            {"name": "tokenizer_config.json", "hash": "1179e1f25d5b3e19"},
+            {"name": "vocab.json", "hash": "e3790d332807f48a"},
+        ]
+    elif "SmolVLM-Instruct" in model_path:
+        required_files = [
+            {"name": "added_tokens.json", "hash": "a66c8cf27a9b91f9"},
+            {"name": "chat_template.json", "hash": "23bf0f409ddc6e30"},
+            {"name": "config.json", "hash": "33ccb05bfe1f09a9"},
+            {"name": "generation_config.json", "hash": "a3ed37c06f67d572"},
+            {"name": "merges.txt", "hash": "4d16a8257a0470ad"},
+            {"name": "model.safetensors", "hash": "4531c8bb61db480b"},
+            {"name": "preprocessor_config.json", "hash": "ff86f770d8bb049f"},
+            {"name": "processor_config.json", "hash": "6d5856bccc2944b5"},
+            {"name": "special_tokens_map.json", "hash": "5969276611f60ff1"},
+            {"name": "tokenizer.json", "hash": "7995f46b407a54ce"},
+            {"name": "tokenizer_config.json", "hash": "f626bc19dde956c7"},
+            {"name": "vocab.json", "hash": "e3790d332807f48a"},
+        ]
+    else:
+        print(f"❌ Unknown model type: {model_path}", color.RED)
+        return False        
+
+    valid = True  # assume everything is fine until proven otherwise
+
+    for file_info in required_files:
+        file_path = os.path.join(model_path, file_info["name"])
+        
+        if not os.path.isfile(file_path):
+            print(f"❌ Missing file: {file_info['name']}", color.RED)
+            valid = False
+            continue
+
+        try:
+            file_hash = hash_file(file_path, chunk_size=chunk_size)
+
+            if file_hash == file_info["hash"]:    
+                # print(f' - {file_info["name"]}: {file_hash}: OKAY', color.BRIGHT_GREEN)
+                pass
+            else:
+                print(f' - {file_info["name"]}: {file_hash}: MISMATCH. Expected {file_info["hash"]}', color.BRIGHT_RED)
+                valid = False
+
+        except Exception as e:
+            print(f'❌ Error checking hash for {file_info["name"]}: {str(e)}', color.RED)
+            valid = False
+
+    return valid
 
 # ====================================================================
 def load_model():
@@ -104,21 +237,21 @@ def load_model():
     # If we get here, all attempts failed
     raise Exception("Failed to load model with any attention implementation")
 
-# ====================================================================
-def check_model_exists():
 
-    # first check directory exists..
-
-    # next check all necessary files exist...
-
-    # if not, then download it into models/model-name
-    pass
     
 
 
 
 # Load model and processor at startup
 start_time = time.time()
+
+# checks and validates the model files 
+filesokay = check_model_files(MODEL_PATH)
+
+# if not exist or incomplete then
+if not filesokay:
+    # Use the new download function
+    download_model_from_HF(MODEL_PATH)
 
 # LOAD MODEL
 processor, model, DEVICE = load_model()
