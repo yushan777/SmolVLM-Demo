@@ -7,19 +7,6 @@ import json
 from colored_print import color
 from huggingface_hub import snapshot_download
 
-# ==============================================================
-def get_device():
-    """Determine the best available device for PyTorch"""
-    if torch.cuda.is_available():
-        device = "cuda"
-        print(f"Using CUDA device")
-    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
-        device = "mps"
-        print(f"Using MPS device")
-    else:
-        device = "cpu"
-        print(f"No GPU available, using CPU")
-    return device
 
 # ==============================================================
 def hash_file(filepath, chunk_size=1024 * 1024):  # default 1MB
@@ -125,12 +112,3 @@ def download_model_from_HF(model_path):
     except Exception as e:
         print(f"❌ Failed to download model: {str(e)}", color.RED)
         return False
-
-# ==============================================================
-def check_image_exists(image_path):
-    """Check if input image file exists"""
-    if not os.path.exists(image_path):
-        print(f"Error: Image file not found at {image_path}", color.RED)
-        print("Please check the path and ensure the file extension is included (e.g., .jpg, .png, .webp)", color.YELLOW)
-        return False
-    return True
