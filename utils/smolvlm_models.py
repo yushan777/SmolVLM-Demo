@@ -1,4 +1,4 @@
-# for checking, validating, downloading model files
+# for checking, validating, downloading smolvlm model files
 
 import torch
 import os
