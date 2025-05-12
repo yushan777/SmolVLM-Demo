@@ -10,6 +10,7 @@ from threading import Thread
 from transformers.generation.streamers import TextIteratorStreamer
 from huggingface_hub import snapshot_download
 import xxhash
+import json
 
 # macOS shit, just in case some pytorch ops are not supported on mps yes, fallback to cpu
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -107,57 +108,29 @@ def hash_file(filepath, chunk_size=1024 * 1024):  # default 1MB
     return h.hexdigest()
 
 # ==========================================================================
-def validate_model_files(model_path, chunk_size=1024 * 1024):
+def validate_model_files(model_path, chunk_size=1024 * 1024, config_path="model_checksums.json"):
     # files hashed with xxhash.xxh3_64()
     
-    if "SmolVLM-256M-Instruct" in model_path:
-        required_files = [
-            {"name": "added_tokens.json","hash": "966a479d6d5d5128"},
-            {"name": "chat_template.json","hash": "23bf0f409ddc6e30"},
-            {"name": "config.json","hash": "6489279a8c3c5ae7"},
-            {"name": "generation_config.json","hash": "6e99ea1697338d6d"},
-            {"name": "merges.txt","hash": "4d16a8257a0470ad"},
-            {"name": "model.safetensors","hash": "804a944c3ae77765"},
-            {"name": "preprocessor_config.json","hash": "2bdb8382f60bdb98"},
-            {"name": "processor_config.json","hash": "1db78eee2f186fd5"},
-            {"name": "special_tokens_map.json","hash": "5969276611f60ff1"},
-            {"name": "tokenizer.json","hash": "7c81a296f87a3d25"},
-            {"name": "tokenizer_config.json","hash": "1179e1f25d5b3e19"},
-            {"name": "vocab.json","hash": "e3790d332807f48a"},
-        ]
-    elif "SmolVLM-500M-Instruct" in model_path:
-        required_files = [
-            {"name": "added_tokens.json", "hash": "966a479d6d5d5128"},
-            {"name": "chat_template.json", "hash": "23bf0f409ddc6e30"},
-            {"name": "config.json", "hash": "32fbfed32a41d912"},
-            {"name": "generation_config.json", "hash": "6e99ea1697338d6d"},
-            {"name": "merges.txt", "hash": "4d16a8257a0470ad"},
-            {"name": "model.safetensors", "hash": "6db68c3544f56c2f"},
-            {"name": "preprocessor_config.json", "hash": "2bdb8382f60bdb98"},
-            {"name": "processor_config.json", "hash": "1db78eee2f186fd5"},
-            {"name": "special_tokens_map.json", "hash": "5969276611f60ff1"},
-            {"name": "tokenizer.json", "hash": "7c81a296f87a3d25"},
-            {"name": "tokenizer_config.json", "hash": "1179e1f25d5b3e19"},
-            {"name": "vocab.json", "hash": "e3790d332807f48a"},
-        ]
-    elif "SmolVLM-Instruct" in model_path:
-        required_files = [
-            {"name": "added_tokens.json", "hash": "a66c8cf27a9b91f9"},
-            {"name": "chat_template.json", "hash": "23bf0f409ddc6e30"},
-            {"name": "config.json", "hash": "33ccb05bfe1f09a9"},
-            {"name": "generation_config.json", "hash": "a3ed37c06f67d572"},
-            {"name": "merges.txt", "hash": "4d16a8257a0470ad"},
-            {"name": "model.safetensors", "hash": "4531c8bb61db480b"},
-            {"name": "preprocessor_config.json", "hash": "ff86f770d8bb049f"},
-            {"name": "processor_config.json", "hash": "6d5856bccc2944b5"},
-            {"name": "special_tokens_map.json", "hash": "5969276611f60ff1"},
-            {"name": "tokenizer.json", "hash": "7995f46b407a54ce"},
-            {"name": "tokenizer_config.json", "hash": "f626bc19dde956c7"},
-            {"name": "vocab.json", "hash": "e3790d332807f48a"},
-        ]
-    else:
-        print(f"❌ Unknown model type: {model_path}", color.RED)
-        return False        
+    # Load file hash data from JSON
+    try:
+        with open(config_path, 'r') as f:
+            model_configs = json.load(f)
+    except Exception as e:
+        print(f"❌ Error loading config file: {str(e)}")
+        return False
+        
+    # Determine which model we're validating
+    model_type = None
+    for possible_type in model_configs.keys():
+        if possible_type in model_path:
+            model_type = possible_type
+            break
+            
+    if not model_type:
+        print(f"❌ Unknown model type: {model_path}")
+        return False
+        
+    required_files = model_configs[model_type]  
 
     valid = True  # assume everything is fine until proven otherwise
 
@@ -186,7 +159,7 @@ def validate_model_files(model_path, chunk_size=1024 * 1024):
     return valid
 
 # ====================================================================
-def load_model():
+def load_model(model_path):
     device = get_device()
     print(f"Using {device} device")
     
@@ -194,7 +167,7 @@ def load_model():
     # FIRST CHECK IF MODEL EXISTS IN LOCAL DIRECTORY (./models/)
 
 
-    processor = AutoProcessor.from_pretrained(MODEL_PATH)
+    processor = AutoProcessor.from_pretrained(model_path)
     
     # Attention fallback order 
     attention_fallback = [
@@ -210,14 +183,14 @@ def load_model():
         try:
             if impl is not None:
                 model = AutoModelForVision2Seq.from_pretrained(
-                    MODEL_PATH,
+                    model_path,
                     torch_dtype=torch.float16,
                     _attn_implementation=impl
                 ).to(device)
                 print(f"✓ Loaded with {impl} attention", color.GREEN)
             else:
                 model = AutoModelForVision2Seq.from_pretrained(
-                    MODEL_PATH,
+                    model_path,
                     torch_dtype=torch.float16
                 ).to(device)
                 print("✓ Loaded with no attention specified", color.GREEN)
@@ -241,6 +214,8 @@ def load_model():
     
 
 
+# ===========================================================
+# run at module level
 
 # Load model and processor at startup
 start_time = time.time()
@@ -254,12 +229,12 @@ if not filesokay:
     download_model_from_HF(MODEL_PATH)
 
 # LOAD MODEL
-processor, model, DEVICE = load_model()
+processor, model, DEVICE = load_model(MODEL_PATH)
 
 end_time = time.time()
 model_load_time = end_time - start_time
 print(f"Model {os.path.basename(MODEL_PATH)} loaded on {DEVICE} in {model_load_time:.2f} seconds.", color.GREEN)
-print(f"Running in {'streaming' if args.use_stream else 'non-streaming'} mode.\n", color.BLUE)
+# print(f"Running in {'streaming' if args.use_stream else 'non-streaming'} mode.\n", color.BRIGHT_BLUE)
 
 # ====================================================================
 def generate_caption_streaming(

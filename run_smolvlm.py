@@ -13,6 +13,10 @@ from transformers.generation.streamers import TextIteratorStreamer
 from huggingface_hub import snapshot_download
 import xxhash
 
+# Enable MPS fallback to CPU for operations not supported on MPS
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+
+
 def check_image_exists(image_path):
     """Check if input image file exists"""
     if not os.path.exists(image_path):
@@ -20,14 +24,14 @@ def check_image_exists(image_path):
         print("Please check the path and ensure the file extension is included (e.g., .jpg, .png, .webp)", color.YELLOW)
         sys.exit(1)
 
+# ==============================================================
 def download_model_from_HF(model_path):
     
     # Download model from HF.
-
     REPO_NAME = f"yushan777/{os.path.basename(model_path)}"
 
     try:
-        print(f"⬇️ Downloading model from HuggingFace repo: {REPO_NAME}", color.ORANGE)
+        print(f"⬇️ Downloading model from HF Repo: {REPO_NAME}", color.ORANGE)
         
         # Download the repository to the specified path
         snapshot_download(
@@ -50,7 +54,7 @@ def download_model_from_HF(model_path):
         print(f"❌ Failed to download model: {str(e)}", color.RED)
         return False
 
-
+# ==============================================================
 def check_model_files(model_path):
     print(f"Checking Model Path: {model_path}", color.ORANGE)
 
@@ -73,57 +77,29 @@ def hash_file(filepath, chunk_size=1024 * 1024):  # default 1MB
     return h.hexdigest()
 
 # ==========================================================================
-def validate_model_files(model_path, chunk_size=1024 * 1024):
+def validate_model_files(model_path, chunk_size=1024 * 1024, config_path="model_checksums.json"):
     # files hashed with xxhash.xxh3_64()
     
-    if "SmolVLM-256M-Instruct" in model_path:
-        required_files = [
-            {"name": "added_tokens.json","hash": "966a479d6d5d5128"},
-            {"name": "chat_template.json","hash": "23bf0f409ddc6e30"},
-            {"name": "config.json","hash": "6489279a8c3c5ae7"},
-            {"name": "generation_config.json","hash": "6e99ea1697338d6d"},
-            {"name": "merges.txt","hash": "4d16a8257a0470ad"},
-            {"name": "model.safetensors","hash": "804a944c3ae77765"},
-            {"name": "preprocessor_config.json","hash": "2bdb8382f60bdb98"},
-            {"name": "processor_config.json","hash": "1db78eee2f186fd5"},
-            {"name": "special_tokens_map.json","hash": "5969276611f60ff1"},
-            {"name": "tokenizer.json","hash": "7c81a296f87a3d25"},
-            {"name": "tokenizer_config.json","hash": "1179e1f25d5b3e19"},
-            {"name": "vocab.json","hash": "e3790d332807f48a"},
-        ]
-    elif "SmolVLM-500M-Instruct" in model_path:
-        required_files = [
-            {"name": "added_tokens.json", "hash": "966a479d6d5d5128"},
-            {"name": "chat_template.json", "hash": "23bf0f409ddc6e30"},
-            {"name": "config.json", "hash": "32fbfed32a41d912"},
-            {"name": "generation_config.json", "hash": "6e99ea1697338d6d"},
-            {"name": "merges.txt", "hash": "4d16a8257a0470ad"},
-            {"name": "model.safetensors", "hash": "6db68c3544f56c2f"},
-            {"name": "preprocessor_config.json", "hash": "2bdb8382f60bdb98"},
-            {"name": "processor_config.json", "hash": "1db78eee2f186fd5"},
-            {"name": "special_tokens_map.json", "hash": "5969276611f60ff1"},
-            {"name": "tokenizer.json", "hash": "7c81a296f87a3d25"},
-            {"name": "tokenizer_config.json", "hash": "1179e1f25d5b3e19"},
-            {"name": "vocab.json", "hash": "e3790d332807f48a"},
-        ]
-    elif "SmolVLM-Instruct" in model_path:
-        required_files = [
-            {"name": "added_tokens.json", "hash": "a66c8cf27a9b91f9"},
-            {"name": "chat_template.json", "hash": "23bf0f409ddc6e30"},
-            {"name": "config.json", "hash": "33ccb05bfe1f09a9"},
-            {"name": "generation_config.json", "hash": "a3ed37c06f67d572"},
-            {"name": "merges.txt", "hash": "4d16a8257a0470ad"},
-            {"name": "model.safetensors", "hash": "4531c8bb61db480b"},
-            {"name": "preprocessor_config.json", "hash": "ff86f770d8bb049f"},
-            {"name": "processor_config.json", "hash": "6d5856bccc2944b5"},
-            {"name": "special_tokens_map.json", "hash": "5969276611f60ff1"},
-            {"name": "tokenizer.json", "hash": "7995f46b407a54ce"},
-            {"name": "tokenizer_config.json", "hash": "f626bc19dde956c7"},
-            {"name": "vocab.json", "hash": "e3790d332807f48a"},
-        ]
-    else:
-        print(f"❌ Unknown model type: {model_path}", color.RED)
-        return False        
+    # Load file hash data from JSON
+    try:
+        with open(config_path, 'r') as f:
+            model_configs = json.load(f)
+    except Exception as e:
+        print(f"❌ Error loading config file: {str(e)}")
+        return False
+        
+    # Determine which model we're validating
+    model_type = None
+    for possible_type in model_configs.keys():
+        if possible_type in model_path:
+            model_type = possible_type
+            break
+            
+    if not model_type:
+        print(f"❌ Unknown model type: {model_path}")
+        return False
+        
+    required_files = model_configs[model_type]      
 
     valid = True  # assume everything is fine until proven otherwise
 
@@ -151,7 +127,68 @@ def validate_model_files(model_path, chunk_size=1024 * 1024):
 
     return valid
 
+# ====================================================================
+def get_device():
+    if torch.cuda.is_available():
+        return "cuda"
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        return "mps"
+    else:
+        return "cpu"
 
+
+# ====================================================================
+def load_model(model_path):
+    device = get_device()
+    print(f"Using {device} device", color.GREEN)
+    
+
+    # FIRST CHECK IF MODEL EXISTS IN LOCAL DIRECTORY (./models/)
+
+    print(f"MODEL_PATH = {model_path}", color.CYAN)
+
+    processor = AutoProcessor.from_pretrained(model_path)
+    
+    # Attention fallback order 
+    attention_fallback = [
+        "flash_attention_2",  # Best performance if available
+        "sdpa",              # Good default in PyTorch 2.0+
+        "xformers",          # Good alternative, memory efficient
+        "eager",             # Reliable fallback
+        None                 # Absolute fallback
+    ]
+    
+    # Try each attention implementation
+    for impl in attention_fallback:
+        try:
+            if impl is not None:
+                model = AutoModelForVision2Seq.from_pretrained(
+                    model_path,
+                    torch_dtype=torch.float16,
+                    _attn_implementation=impl
+                ).to(device)
+                print(f"✓ Loaded with {impl} attention", color.GREEN)
+            else:
+                model = AutoModelForVision2Seq.from_pretrained(
+                    model_path,
+                    torch_dtype=torch.float16
+                ).to(device)
+                print("✓ Loaded with no attention specified", color.GREEN)
+
+            return processor, model, device
+        
+        except ImportError as e:
+            if impl == "flash_attention_2" and "flash_attn" in str(e):
+                print(f"  flash_attention_2 not available (package not installed)", color.YELLOW)
+            else:
+                print(f"  Failed with {impl}: {e}", color.RED)
+            continue
+        except Exception as e:
+            print(f"  Failed with {impl}: {e}", color.RED)
+            continue
+    
+    # If we get here, all attempts failed
+    raise Exception("Failed to load model with any attention implementation")
 
 
 # ===============================================================
@@ -170,24 +207,15 @@ def main():
     # MODEL SELECTION AND PATH
     MODEL_PATH = f"model/{args.model}"
 
+    
+    print(f"MODEL_PATH = {MODEL_PATH}", color.CYAN)
+
     # ========================================================
     # Check if image file exists
     check_image_exists(args.image)
     
-    # Enable MPS fallback to CPU for operations not supported on MPS
-    os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-        
-    # Determine device
-    if torch.cuda.is_available():
-        DEVICE = "cuda"
-        print("Using CUDA device")
-    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
-        DEVICE = "mps"
-        print("Using MPS device")
-    else:
-        DEVICE = "cpu"
-        print("No GPU available, using CPU")
-    
+
+
     start_time = time.time()
     
 
@@ -199,16 +227,10 @@ def main():
         # Use the new download function
         download_model_from_HF(MODEL_PATH)
 
+    print(f"MODEL_PATH = {MODEL_PATH}", color.ORANGE)
 
-
-
-
-
-    # ========================================================
-    # Initialize processor and model
-    processor = AutoProcessor.from_pretrained(MODEL_PATH)
-    model = AutoModelForVision2Seq.from_pretrained(MODEL_PATH, torch_dtype=torch.float16)
-    model.to(DEVICE)
+    # LOAD MODEL
+    processor, model, DEVICE = load_model(MODEL_PATH)
 
     
     
