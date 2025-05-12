@@ -10,6 +10,7 @@ import argparse
 from threading import Thread
 from transformers.generation.streamers import TextIteratorStreamer
 from huggingface_hub import snapshot_download
+import xxhash
 
 def check_image_exists(image_path):
     """Check if input image file exists"""
@@ -18,50 +19,49 @@ def check_image_exists(image_path):
         print("Please check the path and ensure the file extension is included (e.g., .jpg, .png, .webp)", color.YELLOW)
         sys.exit(1)
 
-def check_model_exists_otherwise_download(model_path):
-    print(f"Checking Model Path: {model_path}", color.ORANGE)
+def download_model_from_HF(model_path):
+    
+    # Download model from HF.
 
-    # Step 1: Check if directory exists
-    if os.path.exists(model_path):
-        print(f"✅ Directory exists", color.ORANGE)
+    REPO_NAME = f"yushan777/{os.path.basename(model_path)}"
 
-        # Step 1b: Check if all required files exist and have correct hashes
+    try:
+        print(f"⬇️ Downloading model from HuggingFace repo: {REPO_NAME}", color.ORANGE)
+        
+        # Download the repository to the specified path
+        snapshot_download(
+            repo_id=REPO_NAME,
+            local_dir=model_path,
+            local_dir_use_symlinks=False,  
+        )
+        
+        print(f"✅ Model downloaded successfully", color.GREEN)
+        
+        # Verify the downloaded files
         if validate_model_files(model_path):
-            print(f"✅ All model files are valid", color.GREEN)
+            print(f"✅ Downloaded files validated", color.GREEN)
             return True
         else:
-            print(f"⚠️  Model files are missing or corrupted", color.YELLOW)
-            # Will fall through to download section        
-
-    else:
-        print(f"❌ Directory not found: attempting to download.", color.ORANGE)
-
-        REPO_NAME = f"yushan777/{os.path.basename(model_path)}"
-
-        # Download section
-        try:
-            print(f"⬇️  Downloading model from HuggingFace repo: {REPO_NAME}", color.ORANGE)
-            
-            # Download the repository to the specified path
-            snapshot_download(
-                repo_id=REPO_NAME,
-                local_dir=model_path,
-                local_dir_use_symlinks=False,  # Download actual files, not symlinks
-            )
-            
-            print(f"✅ Model downloaded successfully", color.GREEN)
-            
-            # Verify the downloaded files
-            if validate_model_files(model_path):
-                print(f"✅ Downloaded files validated", color.GREEN)
-                return True
-            else:
-                print(f"❌ Downloaded files validation failed", color.RED)
-                return False
-                
-        except Exception as e:
-            print(f"❌ Failed to download model: {str(e)}", color.RED)
+            print(f"❌ Downloaded files validation failed", color.RED)
             return False
+            
+    except Exception as e:
+        print(f"❌ Failed to download model: {str(e)}", color.RED)
+        return False
+
+
+def check_model_files(model_path):
+    print(f"Checking Model Path: {model_path}", color.ORANGE)
+
+    # validate model files first
+    if validate_model_files(model_path):
+        print(f"✅ All model files are valid", color.GREEN)
+        return True
+    
+    # If we get here, either directory doesn't exist or files are invalid
+    print(f"⚠️ Model files are missing or corrupted - attempting to download", color.YELLOW)
+    return False 
+
             
 
 
@@ -69,78 +69,90 @@ def check_model_exists_otherwise_download(model_path):
 # ==========================================================================
 def validate_model_files(model_path):
 
-    # This is where you'd implement your hash checking logic
-    # For example:
+    # files hashed with xxhash.xxh3_64()
     
     if "SmolVLM-256M-Instruct" in model_path:
         required_files = [
-            "added_tokens.json",
-            "chat_template.json",
-            "config.json",
-            "generation_config.json",
-            "merges.txt",
-            "model.safetensors",
-            "preprocessor_config.json",
-            "processor_config.json",
-            "README.md",
-            "special_tokens_map.json",
-            "tokenizer_config.json",
-            "tokenizer.json",
-            "vocab.json",
+            {"name": "added_tokens.json","hash": "966a479d6d5d5128"},
+            {"name": "chat_template.json","hash": "23bf0f409ddc6e30"},
+            {"name": "config.json","hash": "6489279a8c3c5ae7"},
+            {"name": "generation_config.json","hash": "6e99ea1697338d6d"},
+            {"name": "merges.txt","hash": "4d16a8257a0470ad"},
+            {"name": "model.safetensors","hash": "804a944c3ae77765"},
+            {"name": "preprocessor_config.json","hash": "2bdb8382f60bdb98"},
+            {"name": "processor_config.json","hash": "1db78eee2f186fd5"},
+            {"name": "special_tokens_map.json","hash": "5969276611f60ff1"},
+            {"name": "tokenizer.json","hash": "7c81a296f87a3d25"},
+            {"name": "tokenizer_config.json","hash": "1179e1f25d5b3e19"},
+            {"name": "vocab.json","hash": "e3790d332807f48a"},
+
         ]
     elif "SmolVLM-500M-Instruct" in model_path:
         required_files = [
-            "added_tokens.json",
-            "chat_template.json",
-            "config.json",
-            "generation_config.json",
-            "merges.txt",
-            "model.safetensors",
-            "preprocessor_config.json",
-            "processor_config.json",
-            "README.md",
-            "special_tokens_map.json",
-            "tokenizer_config.json",
-            "tokenizer.json",
-            "vocab.json",
+            {"name": "added_tokens.json", "hash": "966a479d6d5d5128"},
+            {"name": "chat_template.json", "hash": "23bf0f409ddc6e30"},
+            {"name": "config.json", "hash": "32fbfed32a41d912"},
+            {"name": "generation_config.json", "hash": "6e99ea1697338d6d"},
+            {"name": "merges.txt", "hash": "4d16a8257a0470ad"},
+            {"name": "model.safetensors", "hash": "6db68c3544f56c2f"},
+            {"name": "preprocessor_config.json", "hash": "2bdb8382f60bdb98"},
+            {"name": "processor_config.json", "hash": "1db78eee2f186fd5"},
+            {"name": "special_tokens_map.json", "hash": "5969276611f60ff1"},
+            {"name": "tokenizer.json", "hash": "7c81a296f87a3d25"},
+            {"name": "tokenizer_config.json", "hash": "1179e1f25d5b3e19"},
+            {"name": "vocab.json", "hash": "e3790d332807f48a"},
         ]
     elif "SmolVLM-Instruct" in model_path:
         required_files = [
-            "added_tokens.json",
-            "chat_template.json",
-            "config.json",
-            "generation_config.json",
-            "LICENSE",
-            "merges.txt",
-            "mixture_the_cauldron.png",
-            "model.safetensors",
-            "preprocessor_config.json",
-            "processor_config.json",
-            "README.md",
-            "smolvlm-data.pdf",
-            "SmolVLM.png",
-            "special_tokens_map.json",
-            "tokenizer_config.json",
-            "tokenizer.json",
-            "vocab.json",
+            {"name": "added_tokens.json", "hash": "a66c8cf27a9b91f9"},
+            {"name": "chat_template.json", "hash": "23bf0f409ddc6e30"},
+            {"name": "config.json", "hash": "33ccb05bfe1f09a9"},
+            {"name": "generation_config.json", "hash": "a3ed37c06f67d572"},
+            {"name": "merges.txt", "hash": "4d16a8257a0470ad"},
+            {"name": "model.safetensors", "hash": "4531c8bb61db480b"},
+            {"name": "preprocessor_config.json", "hash": "ff86f770d8bb049f"},
+            {"name": "processor_config.json", "hash": "6d5856bccc2944b5"},
+            {"name": "special_tokens_map.json", "hash": "5969276611f60ff1"},
+            {"name": "tokenizer.json", "hash": "7995f46b407a54ce"},
+            {"name": "tokenizer_config.json", "hash": "f626bc19dde956c7"},
+            {"name": "vocab.json", "hash": "e3790d332807f48a"},
         ]
     else:
         # Handle the case where none of the conditions match
         print(f"❌ Unknown model type: {model_path}", color.RED)
         return False        
     
-    # Check if all required files exist
-    for file in required_files:
-        file_path = os.path.join(model_path, file)
+    # Check if all required files exist and have correct hashes
+    for file_info in required_files:
+        file_path = os.path.join(model_path, file_info["name"])
+        
+        # Check if file exists
         if not os.path.isfile(file_path):
-            print(f"❌ Missing file: {file}", color.RED)
+            print(f"❌ Missing file: {file_info['name']}", color.RED)
+            return False
+            
+        # Check file hash
+        try:
+            with open(file_path, "rb") as f:
+                file_hash = hash_file(file_path)
+                print(f'{file_hash} : {file_info["hash"]}', color.BRIGHT_BLUE)
+
+            if file_hash != file_info["hash"]:
+                print(f"❌ Hash mismatch for {file_info['name']}: expected {file_info['hash']}, got {file_hash}", color.RED)
+                return False
+        except Exception as e:
+            print(f"❌ Error checking hash for {file_info['name']}: {str(e)}", color.RED)
             return False
     
-
-    # # TODO: Add hash checking for each file
-    # # For now, just return True if all files exist
-    # print("📋 All required files found (hash check pending)", color.YELLOW)
     return True
+
+# ==============================================================
+def hash_file(filepath, chunk_size=1024 * 1024):  # default 1MB
+    h = xxhash.xxh3_64()
+    with open(filepath, 'rb') as f:
+        for chunk in iter(lambda: f.read(chunk_size), b''):
+            h.update(chunk)
+    return h.hexdigest()
 
 # ===============================================================
 def main():
@@ -179,7 +191,14 @@ def main():
     start_time = time.time()
     
 
-    check_model_exists_otherwise_download(MODEL_PATH)
+    # checks and validates the model files 
+    filesokay = check_model_files(MODEL_PATH)
+
+    # if not exist or incomplete then
+    if not filesokay:
+        # Use the new download function
+        download_model_from_HF(MODEL_PATH)
+
 
 
 

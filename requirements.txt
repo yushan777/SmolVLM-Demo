@@ -1,3 +1,4 @@
 Pillow
-transformers
-gradio
+transformers>=4.51.3
+gradio>=5.29.0
+xxhash>=3.5.0
