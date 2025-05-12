@@ -205,7 +205,7 @@ def main():
     args = parser.parse_args()
     
     # MODEL SELECTION AND PATH
-    MODEL_PATH = f"model/{args.model}"
+    MODEL_PATH = f"models/{args.model}"
 
     
     print(f"MODEL_PATH = {MODEL_PATH}", color.CYAN)

@@ -536,7 +536,7 @@ def main():
     args = parser.parse_args()
 
     # Set model path
-    MODEL_PATH = f"model/{args.model}"
+    MODEL_PATH = f"models/{args.model}"
     
     # Set mode for UI display
     global UI_MODE
