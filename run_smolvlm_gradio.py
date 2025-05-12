@@ -15,17 +15,17 @@ import json
 # macOS shit, just in case some pytorch ops are not supported on mps yes, fallback to cpu
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
-# Parse command line arguments
-parser = argparse.ArgumentParser(description="Run SmolVLM with Gradio")
-parser.add_argument("--use_stream", action="store_true", help="Use streaming mode for text generation")
-parser.add_argument("--model", 
-                    choices=["SmolVLM-Instruct", "SmolVLM-500M-Instruct", "SmolVLM-256M-Instruct"],
-                    default="SmolVLM-Instruct", 
-                    help="Model to use (default: SmolVLM-Instruct)")
-args = parser.parse_args()
+# # Parse command line arguments
+# parser = argparse.ArgumentParser(description="Run SmolVLM with Gradio")
+# parser.add_argument("--use_stream", action="store_true", help="Use streaming mode for text generation")
+# parser.add_argument("--model", 
+#                     choices=["SmolVLM-Instruct", "SmolVLM-500M-Instruct", "SmolVLM-256M-Instruct"],
+#                     default="SmolVLM-Instruct", 
+#                     help="Model to use (default: SmolVLM-Instruct)")
+# args = parser.parse_args()
 
-# MODEL SELECTION AND PATH
-MODEL_PATH = f"model/{args.model}"
+# # MODEL SELECTION AND PATH
+# MODEL_PATH = f"model/{args.model}"
 
 # ================================================
 # DEFAULT PARAM VALUESS
@@ -211,31 +211,6 @@ def load_model(model_path):
     raise Exception("Failed to load model with any attention implementation")
 
 
-    
-
-
-# ===========================================================
-# run at module level
-
-# Load model and processor at startup
-start_time = time.time()
-
-# checks and validates the model files 
-filesokay = check_model_files(MODEL_PATH)
-
-# if not exist or incomplete then
-if not filesokay:
-    # Use the new download function
-    download_model_from_HF(MODEL_PATH)
-
-# LOAD MODEL
-processor, model, DEVICE = load_model(MODEL_PATH)
-
-end_time = time.time()
-model_load_time = end_time - start_time
-print(f"Model {os.path.basename(MODEL_PATH)} loaded on {DEVICE} in {model_load_time:.2f} seconds.", color.GREEN)
-# print(f"Running in {'streaming' if args.use_stream else 'non-streaming'} mode.\n", color.BRIGHT_BLUE)
-
 # ====================================================================
 def generate_caption_streaming(
     image,
@@ -407,147 +382,182 @@ def process_edited_caption(additional_text):
     print(additional_text)
 
 # ====================================================================
-# GRADIO UI
+# GRADIO SHIT
 # ====================================================================
-# Create custom theme
-custom_theme = gr.themes.Base(
-    primary_hue=gr.themes.Color(
-        c50="#faf8fc",
-        c100="#f3edf7",
-        c200="#e7dbe9",
-        c300="#d9c7dc",
-        c400="#c9b3ce",
-        c500="#7d539a",   # Your main color
-        c600="#7d539a",
-        c700="#68447f",
-        c800="#533666",
-        c900="#3f2850",
-        c950="#2a1b36"
-    )
-).set(
-    button_primary_background_fill="#7d539a",
-    button_primary_background_fill_hover="#68447f",
-    button_primary_text_color="white",
-    block_label_text_color="#1f2937",
-    input_border_color="#e5e7eb",
-)
+def launch_gradio(use_stream):
 
-# Create Gradio interface
-with gr.Blocks(title="Image Captioner", theme=custom_theme,  
-               css="""           
-                    /* outermost wrapper of the entire Gradio app */         
-                    .gradio-container {
-                        max-width: 100% !important;
-                        margin: 0 auto !important;
-                    }
-                    /* main content area within the Gradio container */
-                    .main {
-                        max-width: 1200px !important;
-                        margin: 0 auto !important;
-                    }
-                    /* Individual columns */
-                    .fixed-width-column {
-                        width: 600px !important;
-                        flex: none !important;
-                    }
-                    /* Custom color for the editable text box */
-                    #text_box textarea {
-                        /*  color: #2563eb !important;  text color */
-                        font-family: 'monospace', monospace !important; 
-                        font-size: 12px !important; 
-                    }                                
-                """) as demo:   
-    
-    gr.Markdown("# Image Captioner : SmolVLM-Instruct")    
+    # Create custom theme
+    custom_theme = gr.themes.Base(
+        primary_hue=gr.themes.Color(
+            c50="#faf8fc",
+            c100="#f3edf7",
+            c200="#e7dbe9",
+            c300="#d9c7dc",
+            c400="#c9b3ce",
+            c500="#7d539a",   # main color
+            c600="#7d539a",
+            c700="#68447f",
+            c800="#533666",
+            c900="#3f2850",
+            c950="#2a1b36"
+        )
+    ).set(
+        button_primary_background_fill="#7d539a",
+        button_primary_background_fill_hover="#68447f",
+        button_primary_text_color="white",
+        block_label_text_color="#1f2937",
+        input_border_color="#e5e7eb",
+    )
+
     model_name = os.path.basename(MODEL_PATH)
-    mode = "Streaming" if args.use_stream else "Non-streaming"
-    gr.Markdown(f"**Model**: {model_name} | **Mode**: {mode}")
-    
-    gr.Markdown("Upload an image and adjust the settings to generate a caption")
-    
-    with gr.Row():
-        # ================================================
-        # COL 1
-        with gr.Column(elem_classes=["fixed-width-column"]):
-            input_image = gr.Image(type="pil", label="Input Image", height=512)
-                                    
-            submit_btn = gr.Button("Generate Caption", variant="primary")
-            
-        # ================================================
-        # COL 2                    
-        with gr.Column(elem_classes=["fixed-width-column"]):
-            
-            custom_prompt_textbox = gr.Textbox(
-                                        label="Custom Query/Prompt (Optional)", 
-                                        placeholder="Enter your custom query here, or select a caption preset below.", 
-                                        lines=2
-                                        )
+    mode = "Streaming" if use_stream else "Non-streaming"
 
-            caption_style = gr.Dropdown(
-                choices=CAPTION_STYLE_OPTIONS,
-                value=CAPTION_STYLE_OPTIONS[1] if len(CAPTION_STYLE_OPTIONS) > 1 else CAPTION_STYLE_OPTIONS[0] if CAPTION_STYLE_OPTIONS else "Moderately detailed",
-                label="Caption Style"
-            )
-            
-            with gr.Accordion("Advanced Settings", open=False):
-                with gr.Row():
-                    max_tokens = gr.Slider(minimum=50, maximum=1024, value=MAX_NEW_TOKENS, step=1, label="Max New Tokens")
-                    rep_penalty = gr.Slider(minimum=1.0, maximum=2.0, value=REP_PENALTY, step=0.1, label="Repetition Penalty")
-
-                # Group the sampling-related controls together
-                with gr.Group():
-                    do_sample_checkbox = gr.Checkbox(value=DO_SAMPLING, label="Do Sample")
-                    with gr.Row():
-                        temperature_slider = gr.Slider(minimum=0.1, maximum=1.0, value=TEMP, step=0.1, label="Temperature")
-                        top_p_slider = gr.Slider(minimum=0.1, maximum=1.0, value=TOP_P, step=0.1, label="Top P")
-
-                gr.Markdown("""    
-                            ### Parameters:
-                            - **Max New Tokens**: Controls the maximum length of the generated caption
-                            - **Repetition Penalty**: Higher values discourage repetition in the text
-                            - **Do Sample**: Enabled: uses Top P sampling for more diverse outputs. Disabled: use greedy mode (deterministic)
-                            - **Temperature**: Higher values (>1.0) = output more random, lower values = more deterministic
-                            - **Top P**: Higher values (0.8-0.95): More variability, more diverse outputs, Lower values (0.1-0.5): Less variability, more consistent outputs
-                            
-                            """)
+    # Create Gradio interface
+    with gr.Blocks(title="Image Captioner", theme=custom_theme,  
+                css="""           
+                        /* outermost wrapper of the entire Gradio app */         
+                        .gradio-container {
+                            max-width: 100% !important;
+                            margin: 0 auto !important;
+                        }
+                        /* main content area within the Gradio container */
+                        .main {
+                            max-width: 1200px !important;
+                            margin: 0 auto !important;
+                        }
+                        /* Individual columns */
+                        .fixed-width-column {
+                            width: 600px !important;
+                            flex: none !important;
+                        }
+                        /* Custom color for the editable text box */
+                        #text_box textarea {
+                            /*  color: #2563eb !important;  text color */
+                            font-family: 'monospace', monospace !important; 
+                            font-size: 12px !important; 
+                        }                                
+                    """) as demo:   
+        
+        gr.Markdown("# Image Captioner : SmolVLM-Instruct")    
+        gr.Markdown(f"**Model**: {model_name} | **Mode**: {mode}")        
+        gr.Markdown("Upload an image and adjust the settings to generate a caption")
+        
+        with gr.Row():
+            # ================================================
+            # COL 1
+            with gr.Column(elem_classes=["fixed-width-column"]):
+                input_image = gr.Image(type="pil", label="Input Image", height=512)
+                                        
+                submit_btn = gr.Button("Generate Caption", variant="primary")
                 
-    with gr.Row():
-        with gr.Column():
-            output_text = gr.Textbox(label="Generated Caption", lines=5, interactive=True, elem_id="text_box", info="you can edit the caption here before proceeding")
+            # ================================================
+            # COL 2                    
+            with gr.Column(elem_classes=["fixed-width-column"]):
+                
+                custom_prompt_textbox = gr.Textbox(
+                                            label="Custom Query/Prompt (Optional)", 
+                                            placeholder="Enter your custom query here, or select a caption preset below.", 
+                                            lines=2
+                                            )
+
+                caption_style = gr.Dropdown(
+                    choices=CAPTION_STYLE_OPTIONS,
+                    value=CAPTION_STYLE_OPTIONS[1] if len(CAPTION_STYLE_OPTIONS) > 1 else CAPTION_STYLE_OPTIONS[0] if CAPTION_STYLE_OPTIONS else "Moderately detailed",
+                    label="Caption Style"
+                )
+                
+                with gr.Accordion("Advanced Settings", open=False):
+                    with gr.Row():
+                        max_tokens = gr.Slider(minimum=50, maximum=1024, value=MAX_NEW_TOKENS, step=1, label="Max New Tokens")
+                        rep_penalty = gr.Slider(minimum=1.0, maximum=2.0, value=REP_PENALTY, step=0.1, label="Repetition Penalty")
+
+                    # Group the sampling-related controls together
+                    with gr.Group():
+                        do_sample_checkbox = gr.Checkbox(value=DO_SAMPLING, label="Do Sample")
+                        with gr.Row():
+                            temperature_slider = gr.Slider(minimum=0.1, maximum=1.0, value=TEMP, step=0.1, label="Temperature")
+                            top_p_slider = gr.Slider(minimum=0.1, maximum=1.0, value=TOP_P, step=0.1, label="Top P")
+
+                    gr.Markdown("""    
+                                ### Parameters:
+                                - **Max New Tokens**: Controls the maximum length of the generated caption
+                                - **Repetition Penalty**: Higher values discourage repetition in the text
+                                - **Do Sample**: Enabled: uses Top P sampling for more diverse outputs. Disabled: use greedy mode (deterministic)
+                                - **Temperature**: Higher values (>1.0) = output more random, lower values = more deterministic
+                                - **Top P**: Higher values (0.8-0.95): More variability, more diverse outputs, Lower values (0.1-0.5): Less variability, more consistent outputs
+                                
+                                """)
+                    
+        with gr.Row():
+            with gr.Column():
+                output_text = gr.Textbox(label="Generated Caption", lines=5, interactive=True, elem_id="text_box", info="you can edit the caption here before proceeding")
+        
+                # Add the Process button under the second column
+                process_btn = gr.Button("Continue", variant="primary")
+
+        # Choose the appropriate generate function based on the argument
+        generate_function = generate_caption_streaming if use_stream else generate_caption_non_streaming
+
+        submit_btn.click(
+            fn=generate_function,
+            inputs=[
+                input_image,
+                custom_prompt_textbox, # Added custom_prompt_textbox
+                caption_style,
+                max_tokens,
+                rep_penalty,
+                do_sample_checkbox,
+                temperature_slider,
+                top_p_slider
+                
+            ],
+            outputs=[output_text]
+        )
+
+        # Add the click handler for the Process button
+        process_btn.click(
+            fn=process_edited_caption,
+            inputs=[output_text]
+        )
+
+        demo.launch()
+        
+
+def main():
+    global processor, model, DEVICE, MODEL_PATH
+
+    # Parse CLI arguments (can be passed manually as `argv` for testing)
+    parser = argparse.ArgumentParser(description="Run SmolVLM with Gradio")
+    parser.add_argument("--use_stream", action="store_true", help="Use streaming mode for text generation")
+    parser.add_argument("--model", 
+                        choices=["SmolVLM-Instruct", "SmolVLM-500M-Instruct", "SmolVLM-256M-Instruct"],
+                        default="SmolVLM-Instruct", 
+                        help="Model to use (default: SmolVLM-Instruct)")
+    args = parser.parse_args()
+
+    # Set model path
+    MODEL_PATH = f"model/{args.model}"
     
-            # Add the Process button under the second column
-            process_btn = gr.Button("Continue", variant="primary")
+    # Set mode for UI display
+    global UI_MODE
+    UI_MODE = "Streaming" if args.use_stream else "Non-streaming"
 
-    # Choose the appropriate generate function based on the argument
-    generate_function = generate_caption_streaming if args.use_stream else generate_caption_non_streaming
+    # Load/check model
+    start_time = time.time()
 
-    submit_btn.click(
-        fn=generate_function,
-        inputs=[
-            input_image,
-            custom_prompt_textbox, # Added custom_prompt_textbox
-            caption_style,
-            max_tokens,
-            rep_penalty,
-            do_sample_checkbox,
-            temperature_slider,
-            top_p_slider
-            
-        ],
-        outputs=[output_text]
-    )
+    filesokay = check_model_files(MODEL_PATH)
+    if not filesokay:
+        download_model_from_HF(MODEL_PATH)
 
-    # Add the click handler for the Process button
-    process_btn.click(
-        fn=process_edited_caption,
-        inputs=[output_text]
-    )
+    processor, model, DEVICE = load_model(MODEL_PATH)
 
-    # Update the generate_function to use the custom prompt if provided
-    # We need to modify how `prompt_text` is determined in both streaming and non-streaming functions.
-    # This requires modifying the `generate_caption_streaming` and `generate_caption_non_streaming` functions.
-    # The `inputs` for `submit_btn.click` now include `custom_prompt_textbox`.
+    end_time = time.time()
+    model_load_time = end_time - start_time
+    print(f"Model {os.path.basename(MODEL_PATH)} loaded on {DEVICE} in {model_load_time:.2f} seconds.", color.GREEN)
+
+    # Attach to Gradio (if needed)
+    launch_gradio(args.use_stream)
 
 # Launch the Gradio app
 if __name__ == "__main__":
-    demo.launch()
+    main()
