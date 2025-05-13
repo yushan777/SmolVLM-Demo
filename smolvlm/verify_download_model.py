@@ -17,7 +17,7 @@ def hash_file(filepath, chunk_size=1024 * 1024):  # default 1MB
     return h.hexdigest()
 
 # ==========================================================================
-def validate_model_files(model_path, chunk_size=1024 * 1024, config_path="model_checksums.json"):
+def validate_model_files(model_path, chunk_size=1024 * 1024, config_path=os.path.join(os.path.dirname(__file__), "model_checksums.json")):
     # Validate model files against expected checksums
     # called by check_model_files()
 
