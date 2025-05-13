@@ -2,7 +2,7 @@ import torch
 from PIL import Image
 from transformers import AutoProcessor, AutoModelForVision2Seq
 from transformers.image_utils import load_image
-from colored_print import color, style
+from Y7.colored_print import color, style
 import os
 import time
 import sys

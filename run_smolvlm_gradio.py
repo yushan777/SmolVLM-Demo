@@ -3,7 +3,7 @@ import torch
 from PIL import Image
 from transformers import AutoProcessor, AutoModelForVision2Seq, AutoModelForImageTextToText
 import gradio as gr
-from colored_print import color, style
+from Y7.colored_print import color, style
 import os
 import time
 from threading import Thread

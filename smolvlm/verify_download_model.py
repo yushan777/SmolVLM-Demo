@@ -3,7 +3,7 @@
 import os
 import xxhash
 import json
-from colored_print import color
+from Y7.colored_print import color
 from huggingface_hub import snapshot_download
 
 
