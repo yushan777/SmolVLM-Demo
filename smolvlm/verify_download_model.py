@@ -1,6 +1,5 @@
-# for checking, validating, downloading smolvlm model files
+# helper functions for checking, validating, downloading (if necessary) smolvlm model files
 
-import torch
 import os
 import xxhash
 import json
@@ -19,7 +18,9 @@ def hash_file(filepath, chunk_size=1024 * 1024):  # default 1MB
 
 # ==========================================================================
 def validate_model_files(model_path, chunk_size=1024 * 1024, config_path="model_checksums.json"):
-    """Validate model files against expected checksums"""
+    # Validate model files against expected checksums
+    # called by check_model_files()
+
     # files hashed with xxhash.xxh3_64()
     
     # Load file hash data from JSON
