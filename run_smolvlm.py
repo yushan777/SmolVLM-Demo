@@ -11,7 +11,6 @@ import argparse
 from threading import Thread
 from transformers.generation.streamers import TextIteratorStreamer
 from huggingface_hub import snapshot_download
-import xxhash
 from smolvlm.verify_download_model import hash_file_partial, check_model_files, download_model_from_HF
 
 # Enable MPS fallback to CPU for operations not supported on MPS
