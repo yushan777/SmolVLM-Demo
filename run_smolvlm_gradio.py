@@ -263,7 +263,7 @@ def process_edited_caption(additional_text):
 # ====================================================================
 # GRADIO SHIT
 # ====================================================================
-def launch_gradio(use_stream):
+def launch_gradio(use_stream, listen_on_network):
 
     # Create custom theme
     custom_theme = gr.themes.Base(
@@ -399,7 +399,8 @@ def launch_gradio(use_stream):
             inputs=[output_text]
         )
 
-        demo.launch()
+        server_name = "0.0.0.0" if listen_on_network else None
+        demo.launch(server_name=server_name)
         
 
 def main():
@@ -408,6 +409,7 @@ def main():
     # Parse CLI arguments (can be passed manually as `argv` for testing)
     parser = argparse.ArgumentParser(description="Run SmolVLM with Gradio")
     parser.add_argument("--use_stream", action="store_true", help="Use streaming mode for text generation")
+    parser.add_argument("--listen", action="store_true", help="Launch Gradio with server_name='0.0.0.0' to listen on all interfaces")
     parser.add_argument("--model", 
                         choices=["SmolVLM-Instruct", "SmolVLM-500M-Instruct", "SmolVLM-256M-Instruct"],
                         default="SmolVLM-Instruct", 
@@ -435,10 +437,8 @@ def main():
     print(f"Model {os.path.basename(MODEL_PATH)} loaded on {DEVICE} in {model_load_time:.2f} seconds.", color.GREEN)
 
     # Attach to Gradio (if needed)
-    launch_gradio(args.use_stream)
+    launch_gradio(args.use_stream, args.listen)
 
 # Launch the Gradio app
 if __name__ == "__main__":
     main()
-
-
